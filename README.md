@@ -1,2 +1,21 @@
 # c-subset
 A compiler for a subset of the C language that compiles to casm machine code
+
+
+## Todos
+
++ AST free function
++ Improve distinction code for variable assignment and function declaration
++ Fix nested function calls
++ Fix function calls inside if/while condition
++ Add function type parsing and arrays
++ Add unary operators: increment, decrement, bitwise/logical not, pointer dereference
++ Fix parse_bitwise_not(), its ass
++ Add greater/less or equal, not equal tokens
++ Add inline operations (i.e. x <<= 2)
++ Add prefix/suffix increment and decrement
++ Add else if/else branch parsing and single line branch that does not require braces
++ Add for loops, break and continue keywords
++ Add struct type parsing and struct member accses
++ Add type casts and sizeof()
++ Semantic analysis (hopefully)
