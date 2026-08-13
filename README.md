@@ -6,10 +6,10 @@ Note: this project is at a very early stage, it is not even close to being compl
 
 ## Todos
 
-+ AST free function
++ ~~AST free function~~
 + Improve distinction code for variable assignment and function declaration
-+ Fix nested function calls
-+ Fix function calls inside if/while condition
++ ~~Fix nested function calls~~
++ ~~Fix function calls inside if/while condition~~
 + Add function type parsing and arrays
 + Add unary operators: increment, decrement, bitwise/logical not, pointer dereference
 + Fix parse_bitwise_not(), its ass
