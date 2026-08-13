@@ -512,12 +512,54 @@ AST_node *parse_factor() {
         consume();
         return node;
     } else if (CRT_TYPE == TOKEN_IDENT) {
+        // function call or variable reference
         AST_node *node = malloc(sizeof(AST_node));
+        created_nodes++;
+
+        if (OFFSET_CRT_TYPE(1) == TOKEN_LPAR) { // function call
+            node->type = AST_FUNCTION_CALL;
+            node->as.function_call.name = strdup(get_current_token().text);
+
+            consume(); // TOKEN_IDENT
+            consume(); // TOKEN_LPAR
+
+            int argc = 0;
+            int argv_max = 8;
+            AST_node **argv = (AST_node **) calloc(argv_max, sizeof(AST_node*));
+            while (CRT_TYPE != TOKEN_RPAR) {
+                if (argc == argv_max) {
+                    argv_max += 2;
+                    argv = realloc(argv, argv_max * sizeof(AST_node*));
+                }
+
+                argv[argc++] = parse_logical_expression();
+
+                if (CRT_TYPE != TOKEN_COMMA && CRT_TYPE != TOKEN_RPAR) {
+                    fprintf(stderr, "Syntax error: Expected comma or closing parenthesis");
+                    return NULL;
+                }
+
+                if (CRT_TYPE == TOKEN_COMMA) consume();
+            }
+
+            if (argc > 0 && argc < argv_max) {
+                argv = realloc(argv, argc * sizeof(AST_node*));
+            } else if (argc == 0) {
+                free(argv);
+                argv = NULL;
+            }
+
+            node->as.function_call.args = argv;
+            node->as.function_call.count = argc;
+
+            consume(); // TOKEN_RPAR
+            return node;
+        }
+
         node->type = AST_VAR_REF;
         node->as.var_ref.name = strdup(get_current_token().text);
 
-        created_nodes++;
-        consume();
+        consume(); // TOKEN_IDENT
         return node;
     } else if (CRT_TYPE == TOKEN_LPAR) {
         consume();
@@ -602,7 +644,6 @@ AST_node *parse_function_decl() {
                 }
             }
         } else {
-            printf("%d\n", CRT_TYPE);
             perror("Syntax error\n");
             return NULL;
         }
@@ -655,7 +696,7 @@ AST_node *parse_function_call() {
     }
 
     if (argc > 0 && argc < argv_max) {
-        argv = (AST_node **) realloc(argv, argc);
+        argv = (AST_node **) realloc(argv, argc * sizeof(AST_node*));
     } else if (argc == 0) {
         free(argv);
         argv = NULL;
@@ -746,26 +787,6 @@ AST_node *parse_statement() {
 
         // TODO: add pointer case in above cases
 
-        /*
-            TODO:
-            00. AST free function
-            01. Improve distinction code for variable assignment and function declaration
-            02. Fix nested function calls
-            03. Fix function calls inside if/while condition
-            04. Add function type parsing and arrays
-            05. Add unary operators: increment, decrement, bitwise/logical not, pointer dereference
-            06. Fix parse_bitwise_not(), its ass
-            07. Add greater/less or equal, not equal tokens
-            08. Add inline operations (i.e. x <<= 2)
-            09. Add prefix/suffix increment and decrement
-            10. Add else if/else branch parsing and single line branch that does not require braces
-            11. Add for loops, break and continue keywords
-            12. Add struct type parsing and struct member accses
-            13. Add type casts and sizeof()
-
-            14. Semantic analysis (hopefully)
-        */
-
         // either variable increment, inline operation or function call
         case TOKEN_IDENT: {
             // inline operations are not yet implemented
@@ -779,22 +800,40 @@ AST_node *parse_statement() {
                 break;
             } else if (OFFSET_CRT_TYPE(1) == TOKEN_INCREMENT || OFFSET_CRT_TYPE(1) == TOKEN_DECREMENT) {
                 /* this block transforms x++ (or x--) to x = x +/- 1*/
-                AST_node *var_ref = malloc(sizeof(AST_node));
-                var_ref->type = AST_VAR_REF;
-                var_ref->as.var_ref.name = strdup(get_current_token().text);
+                AST_node *var_ref_left = malloc(sizeof(AST_node));
+                var_ref_left->type = AST_VAR_REF;
+                var_ref_left->as.var_ref.name = strdup(get_current_token().text);
+
+                /*
+                    Creating a shallow copy of the var_ref node is required, as both sides of the
+                    binary operation (=), would eventually point to the same address, thus freeing one 
+                    would later cause a segmentation fault while trying to free the other
+                    (i.e. node->as.binary_op.left = right->as.binary_op.left = var_ref)
+                */
+                AST_node *var_ref_right = malloc(sizeof(AST_node));
+                var_ref_right->type = AST_VAR_REF;
+
+                /*
+                    For the same exact reason memcpy() is not used in this case.
+                    If memcpy() was used, both node names would point to the same address:
+                    var_ref_right->as.var_ref.name = var_ref_left->as.var_ref.name
+
+                    Therefore, a segmentation fault would be caused while freeing the names
+                */
+                var_ref_right->as.var_ref.name = strdup(get_current_token().text);
 
                 consume(); // TOKEN_IDENT
 
                 node = malloc(sizeof(AST_node));
                 node->type = AST_BINARY_OP;
                 node->as.binary_op.op = OP_ASSIGN;
-                node->as.binary_op.left = var_ref;
+                node->as.binary_op.left = var_ref_left;
 
                 AST_node *right = malloc(sizeof(AST_node));
                 right->type = AST_BINARY_OP;
                 if (CRT_TYPE == TOKEN_INCREMENT) right->as.binary_op.op = OP_ADD;
                 else right->as.binary_op.op = OP_SUB;
-                right->as.binary_op.left = var_ref;
+                right->as.binary_op.left = var_ref_right;
 
                 AST_node *int_literal = malloc(sizeof(AST_node));
                 int_literal->type = AST_INT_LITERAL;
@@ -905,6 +944,7 @@ AST_node *parse_program() {
     int capacity = 8;
 
     node->type = AST_PROGRAM;
+    node->as.program.count = 0;
     node->as.program.declarations = (AST_node **) calloc(capacity, sizeof(AST_node*));
 
     while (CRT_TYPE != TOKEN_EOF) {
@@ -1225,6 +1265,149 @@ void print_AST(AST_node *program) {
     }
 }
 
+void free_type(Type *t) {
+    if (t == NULL) return;
+
+    switch (t->type) {
+        case TYPE_VOID:
+        case TYPE_INT:
+        case TYPE_CHAR: {
+            break;
+        }
+
+        case TYPE_POINTER: {
+            free_type(t->pointee);
+            break;
+        }
+
+        case TYPE_FUNCTION: {
+            for (int i = 0; i < t->function.count; i++) {
+                free_type(t->function.params[i]);
+            }
+
+            free_type(t->function.return_type);
+            break;
+        }
+
+        case TYPE_ARRAY: {
+            free_type(t->array.memb_type);
+            break;
+        }
+
+        case TYPE_STRUCT: {
+            // will member names be allocated by strdup() ?
+            for (int i = 0; i < t->structure.count; i++) {
+                free_type(t->structure.memb_types[i]);
+                free(t->structure.memb_names[i]); // ?
+            }
+
+            free(t->structure.memb_types);
+            free(t->structure.memb_names);
+            break;
+        }
+    }
+
+    free(t);
+    return;
+}
+
+// frees nodes and types
+void free_child(AST_node *node) {
+    if (node == NULL) return;
+
+    switch (node->type) {
+        case AST_INT_LITERAL: {
+            break;
+        }
+
+        case AST_VAR_REF: {
+            free(node->as.var_ref.name); // allocated by strdup()
+            break;
+        }
+
+        case AST_VAR_DECL: {
+            free_type(node->as.var_decl.type);
+            free_child(node->as.var_decl.init);
+            free(node->as.var_decl.name);
+            break;
+        }
+
+        case AST_BINARY_OP: {
+            free_child(node->as.binary_op.left);
+            free_child(node->as.binary_op.right);
+            break;
+        }
+
+        case AST_IF: {
+            free_child(node->as.if_statement.condition);
+            free_child(node->as.if_statement.body);
+            free_child(node->as.if_statement.else_branch);
+            break;
+        }
+
+        case AST_WHILE: {
+            free_child(node->as.while_statement.condition);
+            free_child(node->as.while_statement.body);
+            break;
+        }
+
+        case AST_RETURN: {
+            free_child(node->as.return_statement.expr);
+            break;
+        }
+
+        case AST_FUNCTION_DECL: {
+            free_type(node->as.function_decl.type);
+            free_child(node->as.function_decl.body);
+            free(node->as.function_decl.name);
+
+            for (int i = 0; i < node->as.function_decl.count; i++) {
+                free_child(node->as.function_decl.args[i]);
+            }
+
+            free(node->as.function_decl.args);
+            break;
+        }
+
+        case AST_FUNCTION_CALL: {
+            for (int i = 0; i < node->as.function_call.count; i++) {
+                free_child(node->as.function_call.args[i]);
+            }
+
+            free(node->as.function_call.args);
+            free(node->as.function_call.name);
+            break;
+        }
+
+        case AST_BLOCK: {
+            for (int i = 0; i < node->as.block.count; i++) {
+                free_child(node->as.block.statements[i]);
+            }
+
+            free(node->as.block.statements);
+            break;
+        }
+
+        case AST_PROGRAM: {
+            fprintf(stderr, "Error: Unexpected program node");
+            break;
+        }
+    }
+
+    free(node);
+    return;
+}
+
+void free_AST(AST_node *program) {
+    for (int i = 0; i < program->as.program.count; i++) {
+        free_child(program->as.program.declarations[i]);
+    }
+
+    free(program->as.program.declarations);
+    free(program);
+    return;
+}
+
 int main(void) {
     arr = (token_t *) calloc(128, sizeof(token_t));
     void *orig_arr_ptr = arr;
@@ -1241,13 +1424,14 @@ int main(void) {
     uint32_t tokens = tokenize(program, arr);
     printf("%d tokens parsed\n", tokens);
 
-    //print_token_array(arr, tokens);
+    // print_token_array(arr, tokens);
 
     AST_node *program = parse_program();
     printf("%d AST nodes created\n", created_nodes);
 
     print_AST(program);
 
+    free_AST(program);
     free(orig_arr_ptr);
     return 0;
 }
