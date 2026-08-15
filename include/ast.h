@@ -15,6 +15,8 @@ enum AST_node_type {
     AST_RETURN,
     AST_FUNCTION_DECL,
     AST_FUNCTION_CALL,
+    AST_BREAK,
+    AST_CONTINUE,
     AST_BLOCK,
     AST_PROGRAM
 };
@@ -36,6 +38,9 @@ enum binop_operator {
     OP_LESS,
     OP_GREATER,
     OP_EQUAL,
+    OP_LE,
+    OP_GE,
+    OP_NE,
     OP_LSH,
     OP_RSH,
     OP_AND,
@@ -52,7 +57,8 @@ enum unary_operator {
     OP_NOT,
     OP_LOGICAL_NOT,
     OP_DEREFERENCE,
-    OP_POINTER
+    OP_POINTER,
+    OP_SIZEOF
 };
 
 
