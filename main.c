@@ -6,6 +6,9 @@
 #include <tokenizer.h>
 
 
+#define ADDRESS_WIDTH   4
+
+
 #define isdigit(c) (c >= '0' && c <= '9')
 #define isalpha(c) ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))
 
@@ -72,19 +75,54 @@ int get_next_token(char *src, token_t *dst) {
             continue;
         }
 
+        if (*src == '>') {
+            if (*(src+1) == '>') {
+                src += 2;
+                dst->type = TOKEN_LSH;
+                free(buff);
+                return cnt+2;
+            } else if (*(src+1) == '=') {
+                src += 2;
+                dst->type = TOKEN_GE;
+                free(buff);
+                return cnt+2;
+            } else {
+                src++;
+                dst->type = TOKEN_GREATER;
+                free(buff);
+                return cnt+1;
+            }
+        }
+
+        if (*src == '<') {
+            if (*(src+1) == '<') {
+                src += 2;
+                dst->type = TOKEN_RSH;
+                free(buff);
+                return cnt+2;
+            } else if (*(src+1) == '=') {
+                src += 2;
+                dst->type = TOKEN_LE;
+                free(buff);
+                return cnt+2;
+            } else {
+                src++;
+                dst->type = TOKEN_LESS;
+                free(buff);
+                return cnt+1;
+            }
+        }
+
         TOKENIZER_2CHAR_CASE('|', OR, '|', LOGICAL_OR);
         TOKENIZER_2CHAR_CASE('&', AND, '&', LOGICAL_AND);
         TOKENIZER_2CHAR_CASE('+', ADD, '+', INCREMENT);
         TOKENIZER_2CHAR_CASE('-', SUB, '-', DECREMENT);
         TOKENIZER_2CHAR_CASE('=', ASSIGN, '=', EQUAL);
-
-        TOKENIZER_2CHAR_CASE('>', GREATER, '>', LSH);
-        TOKENIZER_2CHAR_CASE('<', LESS, '<', RSH);
+        TOKENIZER_2CHAR_CASE('!', LOGICAL_NOT, '=', NE);
 
         TOKENIZER_CHAR_CASE(',', COMMA);
         TOKENIZER_CHAR_CASE('*', STAR);
 
-        TOKENIZER_CHAR_CASE('!', LOGICAL_NOT);
         TOKENIZER_CHAR_CASE('~', NOT);
         TOKENIZER_CHAR_CASE('^', XOR);
         TOKENIZER_CHAR_CASE('(', LPAR);
@@ -100,10 +138,14 @@ int get_next_token(char *src, token_t *dst) {
 
     if (!strcmp(buff, "int")) dst->type = TOKEN_INT;
     SET_BUFF_TYPE("if", IF);
+    SET_BUFF_TYPE("else", ELSE);
     SET_BUFF_TYPE("while", WHILE);
     SET_BUFF_TYPE("return", RETURN);
     SET_BUFF_TYPE("void", VOID);
     SET_BUFF_TYPE("char", CHAR);
+    SET_BUFF_TYPE("sizeof", SIZEOF);
+    SET_BUFF_TYPE("break", BREAK);
+    SET_BUFF_TYPE("continue", CONTINUE);
     else {
         if (digit) {
             dst->type = TOKEN_NUM;
@@ -147,47 +189,8 @@ uint32_t tokenize(char *p, token_t *dst) {
     and move initialized global variables to .data
 */
 
-void print_token_array(token_t *arr, int tokens) {
-    for (int i = 0; i < tokens; i++) {
-        switch (arr[i].type) {
-            PRINT_CASE(TOKEN_VOID);
-            PRINT_CASE(TOKEN_INT);
-            PRINT_CASE(TOKEN_CHAR);
-            PRINT_CASE(TOKEN_IDENT);
-            PRINT_CASE(TOKEN_NUM);
-            PRINT_CASE(TOKEN_IF);
-            PRINT_CASE(TOKEN_WHILE);
-            PRINT_CASE(TOKEN_RETURN);
-            PRINT_CASE(TOKEN_ADD);
-            PRINT_CASE(TOKEN_SUB);
-            PRINT_CASE(TOKEN_STAR);
-            PRINT_CASE(TOKEN_LESS);
-            PRINT_CASE(TOKEN_GREATER);
-            PRINT_CASE(TOKEN_EQUAL);
-            PRINT_CASE(TOKEN_NOT);
-            PRINT_CASE(TOKEN_LSH);
-            PRINT_CASE(TOKEN_RSH);
-            PRINT_CASE(TOKEN_AND);
-            PRINT_CASE(TOKEN_XOR);
-            PRINT_CASE(TOKEN_OR);
-            PRINT_CASE(TOKEN_LOGICAL_NOT);
-            PRINT_CASE(TOKEN_LOGICAL_AND);
-            PRINT_CASE(TOKEN_LOGICAL_OR);
-            PRINT_CASE(TOKEN_INCREMENT);
-            PRINT_CASE(TOKEN_DECREMENT);
-            PRINT_CASE(TOKEN_ASSIGN);
-            PRINT_CASE(TOKEN_LPAR);
-            PRINT_CASE(TOKEN_RPAR);
-            PRINT_CASE(TOKEN_LBRACE);
-            PRINT_CASE(TOKEN_RBRACE);
-            PRINT_CASE(TOKEN_LBRACKET);
-            PRINT_CASE(TOKEN_RBRACKET);
-            PRINT_CASE(TOKEN_SEMICOLON);
-            PRINT_CASE(TOKEN_COMMA);
-            PRINT_CASE(TOKEN_EOF);
-        }
-    }
-}
+
+void print_token(enum tokentype token);
 
 char program[4096];
 token_t *arr;
@@ -209,7 +212,8 @@ void consume() {
 
 void expect(enum tokentype token) {
     if ((*arr).type != token) {
-        fprintf(stderr, "Syntax error: Expected token %d, got %d.\n\tPrevious token: %d\n\tNext token: %d\n", (int) token, (int) CRT_TYPE, (int) (*(arr - 1)).type, (*(arr + 1)).type);
+        printf("Syntax error: Expected ");
+        print_token(token);
     }
 
     return;
@@ -243,8 +247,41 @@ Type *parse_type() {
     return root_type;
 }
 
+uint32_t sizeof_type(Type *t) {
+    if (t == NULL) return -1;
 
-uint32_t created_nodes = 0;
+    switch (t->type) {
+        case TYPE_VOID: {
+            return -1; // void has no size
+        }
+
+        case TYPE_INT: {
+            return 4;
+        }
+
+        case TYPE_CHAR: {
+            return 1;
+        }
+
+        case TYPE_POINTER:
+        case TYPE_FUNCTION: {
+            return ADDRESS_WIDTH;
+        }
+
+        case TYPE_ARRAY: {
+            return t->array.count * sizeof_type(t->array.memb_type);
+        }
+
+        case TYPE_STRUCT: {
+            uint32_t ret = 0;
+            for (int i = 0; i < t->structure.count; i++) {
+                ret += sizeof_type(t->structure.memb_types[i]);
+            }
+
+            return ret;
+        }
+    }
+}
 
 AST_node *parse_factor();
 AST_node *parse_term();
@@ -268,7 +305,6 @@ AST_node *parse_logical_expression() {
         bin_node->as.binary_op.left = left;
         bin_node->as.binary_op.right = right;
 
-        created_nodes++;
         left = bin_node;
     }
 
@@ -288,7 +324,6 @@ AST_node *parse_bitwise_operations() {
         bin_node->as.binary_op.left = left;
         bin_node->as.binary_op.right = right;
 
-        created_nodes++;
         left = bin_node;
     }
 
@@ -308,7 +343,6 @@ AST_node *parse_bitwise_xor() {
         bin_node->as.binary_op.left = left;
         bin_node->as.binary_op.right = right;
 
-        created_nodes++;
         left = bin_node;
     }
 
@@ -328,7 +362,6 @@ AST_node *parse_bitwise_and() {
         bin_node->as.binary_op.left = left;
         bin_node->as.binary_op.right = right;
 
-        created_nodes++;
         left = bin_node;
     }
 
@@ -349,25 +382,11 @@ AST_node *parse_bitwise_shifts() {
         bin_node->as.binary_op.left = left;
         bin_node->as.binary_op.right = right;
 
-        created_nodes++;
         left = bin_node;
     }
 
     return left;
 }
-
-// this function is ass. fix it
-// AST_node *parse_bitwise_not() {
-//     expect_and_consume(TOKEN_NOT);
-
-//     AST_node *bin_node = malloc(sizeof(AST_node));
-//     bin_node->type = AST_BINARY_OP;
-//     bin_node->as.binary_op.op = OP_NOT;
-//     bin_node->as.binary_op.left = NULL;
-//     bin_node->as.binary_op.right = parse_comparison();
-
-//     return bin_node;
-// }
 
 
 /*
@@ -378,7 +397,9 @@ AST_node *parse_bitwise_shifts() {
 AST_node *parse_comparison() {
     AST_node *left = parse_expression();
 
-    if (CRT_TYPE == TOKEN_LESS || CRT_TYPE == TOKEN_GREATER || CRT_TYPE == TOKEN_EQUAL) {
+    if (CRT_TYPE == TOKEN_LESS || CRT_TYPE == TOKEN_GREATER || CRT_TYPE == TOKEN_EQUAL || \
+        CRT_TYPE == TOKEN_LE || CRT_TYPE == TOKEN_GE || CRT_TYPE == TOKEN_NE
+    ) {
         enum binop_operator op = (enum binop_operator) (CRT_TYPE - TOKEN_ADD);
         consume();
 
@@ -390,7 +411,6 @@ AST_node *parse_comparison() {
         bin_node->as.binary_op.left = left;
         bin_node->as.binary_op.right = right;
 
-        created_nodes++;
         left = bin_node;
     }
 
@@ -413,7 +433,6 @@ AST_node *parse_expression() {
         bin_node->as.binary_op.left = left;
         bin_node->as.binary_op.right = right;
 
-        created_nodes++;
         left = bin_node;
     }
 
@@ -425,7 +444,7 @@ AST_node *parse_term() {
     AST_node *left = parse_factor();
 
     while (CRT_TYPE == TOKEN_STAR) {
-        enum binop_operator op = (enum binop_operator) (CRT_TYPE - TOKEN_ADD);
+        enum binop_operator op = OP_STAR;
         consume();
 
         AST_node *right = parse_factor();
@@ -436,7 +455,6 @@ AST_node *parse_term() {
         bin_node->as.binary_op.left = left;
         bin_node->as.binary_op.right = right;
 
-        created_nodes++;
         left = bin_node;
     }
 
@@ -449,13 +467,11 @@ AST_node *parse_factor() {
         node->type = AST_INT_LITERAL;
         node->as.int_literal.value = CRT_VAL;
 
-        created_nodes++;
         consume();
         return node;
     } else if (CRT_TYPE == TOKEN_IDENT) {
         // function call or variable reference
         AST_node *node = malloc(sizeof(AST_node));
-        created_nodes++;
 
         if (OFFSET_CRT_TYPE(1) == TOKEN_LPAR) { // function call
             node->type = AST_FUNCTION_CALL;
@@ -518,13 +534,35 @@ AST_node *parse_factor() {
         return node;
     } else if (CRT_TYPE == TOKEN_LPAR) {
         consume();
-        AST_node *node = parse_bitwise_operations();
+        AST_node *node = parse_logical_expression();
         expect_and_consume(TOKEN_RPAR);
 
         return node;
+    } else if (CRT_TYPE == TOKEN_NOT || CRT_TYPE == TOKEN_LOGICAL_NOT) {
+        AST_node *node = malloc(sizeof(AST_node));
+        node->type = AST_UNARY_OP;
+        node->as.unary_op.op = (CRT_TYPE == TOKEN_NOT) ? OP_NOT : OP_LOGICAL_NOT;
+        node->as.unary_op.prefix = true;
+
+        consume(); // TOKEN_NOT
+        node->as.unary_op.operand = parse_logical_expression();
+
+        return node;
+    } else if (CRT_TYPE == TOKEN_SIZEOF) {
+        consume();
+        expect_and_consume(TOKEN_LPAR);
+
+        AST_node *node = malloc(sizeof(AST_node));
+        node->type = AST_UNARY_OP;
+        node->as.unary_op.op = OP_SIZEOF;
+        node->as.unary_op.prefix = true;
+        node->as.unary_op.operand = parse_logical_expression();
+
+        expect_and_consume(TOKEN_RPAR);
+        return node;
     }
 
-    perror("Syntax error\n");
+    fprintf(stderr, "Syntax error\n");
     return NULL;
 }
 
@@ -545,7 +583,6 @@ AST_node *parse_assignment() {
             node->as.var_decl.init = NULL;
         }
 
-        created_nodes++;
         return node;
     }
 
@@ -563,7 +600,6 @@ AST_node *__parse_function_decl_internal(Type *t) {
     node->as.function_decl.name = strdup(CRT_TEXT);
     consume();
 
-    created_nodes++;
     expect_and_consume(TOKEN_LPAR);
     
     int argc = 0;
@@ -587,7 +623,6 @@ AST_node *__parse_function_decl_internal(Type *t) {
             consume(); // TOKEN_IDENT
 
             argc++;
-            created_nodes++;
             if (CRT_TYPE != TOKEN_RPAR && CRT_TYPE != TOKEN_COMMA) {
                 perror("Syntax error\n");
                 return NULL;
@@ -629,7 +664,6 @@ AST_node *parse_function_call() {
     AST_node *node = (AST_node *) malloc(sizeof(AST_node));
     node->type = AST_FUNCTION_CALL;
 
-    created_nodes++;
     expect(TOKEN_IDENT);
     node->as.function_call.name = strdup(CRT_TEXT);
 
@@ -680,7 +714,6 @@ AST_node *parse_if_statement() {
     node->as.if_statement.condition = parse_comparison();
     expect_and_consume(TOKEN_RPAR);
 
-    created_nodes++;
     if (CRT_TYPE != TOKEN_LBRACE) {
         node->as.if_statement.body = parse_statement(false);
     } else {
@@ -698,7 +731,6 @@ AST_node *parse_return() {
     node->type = AST_RETURN;
     node->as.return_statement.expr = parse_bitwise_operations();
 
-    created_nodes++;
     return node;
 }
 
@@ -714,7 +746,6 @@ AST_node *parse_while() {
 
     node->as.while_statement.body = parse_block();
 
-    created_nodes++;
     return node;
 }
 
@@ -722,7 +753,6 @@ AST_node *parse_statement(bool expect_semicolon) {
     AST_node *node = NULL;
 
     switch (CRT_TYPE) {
-
         // variable or function declaration
         case TOKEN_VOID:
         case TOKEN_INT:
@@ -781,15 +811,48 @@ AST_node *parse_statement(bool expect_semicolon) {
 
                 break;
             } else if (OFFSET_CRT_TYPE(1) == TOKEN_INCREMENT || OFFSET_CRT_TYPE(1) == TOKEN_DECREMENT) {
-                node = parse_term();
+                node = parse_factor();
                 break;
             }
 
-            // augmented operations are not yet implemented
+            /*
+                Augmented assignment will just be transformed into a reassignment.
+                i.e. x (op)= b is transformed into x = x (op) (b)
+            */
+            if (OFFSET_CRT_TYPE(1) - TOKEN_ADD <= OP_ASSIGN) {
+                AST_node *var_ref_left = malloc(sizeof(AST_node));
+                AST_node *var_ref_right = malloc(sizeof(AST_node));
+                var_ref_left->type = var_ref_right->type = AST_VAR_REF;
+                var_ref_left->as.var_ref.name = strdup(CRT_TEXT);
+                var_ref_right->as.var_ref.name = strdup(CRT_TEXT);
+
+                consume(); // TOKEN_IDENT
+                enum binop_operator operator = CRT_TYPE - TOKEN_ADD;
+                consume(); // operator
+                consume(); // TOKEN_ASSIGN
+
+                AST_node *operand = parse_logical_expression();
+                AST_node *right = malloc(sizeof(AST_node));
+                right->type = AST_BINARY_OP;
+                right->as.binary_op.op = operator;
+                right->as.binary_op.left = var_ref_right;
+                right->as.binary_op.right = operand;
+
+                node = malloc(sizeof(AST_node));
+                node->type = AST_BINARY_OP;
+                node->as.binary_op.op = OP_ASSIGN;
+                node->as.binary_op.left = var_ref_left;
+                node->as.binary_op.right = right;
+
+                break;
+            }
         }
 
-        case TOKEN_NUM: {
-            fprintf(stderr, "Syntax error: Unexpected integer literal (prev=%d, next=%d)\n", OFFSET_CRT_TYPE(-1), OFFSET_CRT_TYPE(1));
+        case TOKEN_NUM:
+        case TOKEN_NOT:
+        case TOKEN_LOGICAL_NOT:
+        case TOKEN_SIZEOF: {
+            printf("Warning: Expression result unused\n");
             break;
         }
 
@@ -827,18 +890,20 @@ AST_node *parse_statement(bool expect_semicolon) {
             break;
         }
 
+        case TOKEN_ELSE:
         case TOKEN_ADD:
         case TOKEN_SUB:
         case TOKEN_LESS:
         case TOKEN_GREATER:
         case TOKEN_EQUAL:
-        case TOKEN_NOT:
+        case TOKEN_LE:
+        case TOKEN_GE:
+        case TOKEN_NE:
         case TOKEN_LSH:
         case TOKEN_RSH:
         case TOKEN_AND:
         case TOKEN_XOR:
         case TOKEN_OR:
-        case TOKEN_LOGICAL_NOT:
         case TOKEN_LOGICAL_AND:
         case TOKEN_LOGICAL_OR:
         case TOKEN_ASSIGN:
@@ -850,7 +915,8 @@ AST_node *parse_statement(bool expect_semicolon) {
         case TOKEN_RBRACKET:
         case TOKEN_SEMICOLON:
         case TOKEN_COMMA: {
-            fprintf(stderr, "Syntax error: Unexpected token %d\n", CRT_TYPE);
+            printf("Syntax error: Unexpected token ");
+            print_token(CRT_TYPE);
             break;
         }
     }
@@ -866,7 +932,6 @@ AST_node *parse_statement(bool expect_semicolon) {
 AST_node *parse_block() {
     expect_and_consume(TOKEN_LBRACE);
 
-    created_nodes++;
     AST_node *node = malloc(sizeof(AST_node));
     node->type = AST_BLOCK;
     node->as.block.statements = (AST_node **) calloc(8, sizeof(AST_node*));
@@ -898,7 +963,6 @@ AST_node *parse_block() {
 
 AST_node *parse_program() {
     AST_node *node = malloc(sizeof(AST_node));
-    created_nodes++;
     int capacity = 8;
 
     node->type = AST_PROGRAM;
@@ -940,6 +1004,51 @@ void __print_tabs(int depth) {
     return;
 }
 
+void print_token(enum tokentype token) {
+    switch (token) {
+        PRINT_CASE(TOKEN_VOID);
+        PRINT_CASE(TOKEN_INT);
+        PRINT_CASE(TOKEN_CHAR);
+        PRINT_CASE(TOKEN_IDENT);
+        PRINT_CASE(TOKEN_NUM);
+        PRINT_CASE(TOKEN_IF);
+        PRINT_CASE(TOKEN_ELSE);
+        PRINT_CASE(TOKEN_WHILE);
+        PRINT_CASE(TOKEN_RETURN);
+        PRINT_CASE(TOKEN_ADD);
+        PRINT_CASE(TOKEN_SUB);
+        PRINT_CASE(TOKEN_STAR);
+        PRINT_CASE(TOKEN_LESS);
+        PRINT_CASE(TOKEN_GREATER);
+        PRINT_CASE(TOKEN_EQUAL);
+        PRINT_CASE(TOKEN_LE);
+        PRINT_CASE(TOKEN_GE);
+        PRINT_CASE(TOKEN_NE);
+        PRINT_CASE(TOKEN_NOT);
+        PRINT_CASE(TOKEN_LSH);
+        PRINT_CASE(TOKEN_RSH);
+        PRINT_CASE(TOKEN_AND);
+        PRINT_CASE(TOKEN_XOR);
+        PRINT_CASE(TOKEN_OR);
+        PRINT_CASE(TOKEN_LOGICAL_NOT);
+        PRINT_CASE(TOKEN_LOGICAL_AND);
+        PRINT_CASE(TOKEN_LOGICAL_OR);
+        PRINT_CASE(TOKEN_INCREMENT);
+        PRINT_CASE(TOKEN_DECREMENT);
+        PRINT_CASE(TOKEN_ASSIGN);
+        PRINT_CASE(TOKEN_LPAR);
+        PRINT_CASE(TOKEN_RPAR);
+        PRINT_CASE(TOKEN_LBRACE);
+        PRINT_CASE(TOKEN_RBRACE);
+        PRINT_CASE(TOKEN_LBRACKET);
+        PRINT_CASE(TOKEN_RBRACKET);
+        PRINT_CASE(TOKEN_SEMICOLON);
+        PRINT_CASE(TOKEN_COMMA);
+        PRINT_CASE(TOKEN_SIZEOF);
+        PRINT_CASE(TOKEN_EOF);
+    }
+}
+
 void print_binary_operator(enum binop_operator op) {
     switch (op) {
         PRINT_CASE(OP_ADD);
@@ -967,6 +1076,7 @@ void print_unary_operator(enum unary_operator op) {
         PRINT_CASE(OP_LOGICAL_NOT);
         PRINT_CASE(OP_DEREFERENCE);
         PRINT_CASE(OP_POINTER);
+        PRINT_CASE(OP_SIZEOF);
     }
 }
 
@@ -1431,10 +1541,11 @@ int main(void) {
     uint32_t tokens = tokenize(program, arr);
     printf("%d tokens parsed\n", tokens);
 
-    // print_token_array(arr, tokens);
+    // for (int i = 0; i < tokens; i++) {
+    //     print_token(arr[i].type);
+    // }
 
     AST_node *program = parse_program();
-    printf("%d AST nodes created\n", created_nodes);
 
     print_AST(program);
 
