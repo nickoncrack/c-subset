@@ -34,6 +34,12 @@
         return cnt + 1; \
     }
 
+#define PRINT_CASE(c) \
+    case c: { \
+        printf(#c "\n"); \
+        break; \
+    }
+
 
 int get_next_token(char *src, token_t *dst) {
     char *buff = calloc(64, 1);
@@ -85,6 +91,8 @@ int get_next_token(char *src, token_t *dst) {
         TOKENIZER_CHAR_CASE(')', RPAR);
         TOKENIZER_CHAR_CASE('{', LBRACE);
         TOKENIZER_CHAR_CASE('}', RBRACE);
+        TOKENIZER_CHAR_CASE('[', LBRACKET);
+        TOKENIZER_CHAR_CASE(']', RBRACKET);
         TOKENIZER_CHAR_CASE(';', SEMICOLON);
 
         TOKENIZER_CHAR_CASE(0, EOF);
@@ -142,109 +150,41 @@ uint32_t tokenize(char *p, token_t *dst) {
 void print_token_array(token_t *arr, int tokens) {
     for (int i = 0; i < tokens; i++) {
         switch (arr[i].type) {
-            case TOKEN_VOID: {
-                printf("TOKEN_VOID ");
-                break;
-            }
-
-            case TOKEN_INT: {
-                printf("TOKEN_INT ");
-                break;
-            }
-
-            case TOKEN_IDENT: {
-                printf("TOKEN_IDENT ");
-                break;
-            }
-
-            case TOKEN_NUM: {
-                printf("TOKEN_NUM ");
-                break;
-            }
-
-            case TOKEN_ADD: {
-                printf("TOKEN_ADD ");
-                break;
-            }
-
-            case TOKEN_ASSIGN: {
-                printf("TOKEN_ASSIGN ");
-                break;
-            }
-
-            case TOKEN_SEMICOLON: {
-                printf("TOKEN_SEMICOLON ");
-                break;
-            }
-
-            case TOKEN_IF: {
-                printf("TOKEN_IF ");
-                break;
-            }
-
-            case TOKEN_WHILE: {
-                printf("TOKEN_WHILE ");
-                break;
-            }
-            case TOKEN_RETURN: {
-                printf("TOKEN_RETURN ");
-                break;
-            }
-            case TOKEN_SUB: {
-                printf("TOKEN_SUB ");
-                break;
-            }
-            case TOKEN_LPAR: {
-                printf("TOKEN_LPAR ");
-                break;
-            }
-            case TOKEN_RPAR: {
-                printf("TOKEN_RPAR ");
-                break;
-            }
-            case TOKEN_LBRACE: {
-                printf("TOKEN_LBRACE ");
-                break;
-            }
-            case TOKEN_RBRACE: {
-                printf("TOKEN_RBRACE ");
-                break;
-            }
-
-            case TOKEN_EQUAL: {
-                printf("TOKEN_EQUAL ");
-                break;
-            }
-
-            case TOKEN_INCREMENT: {
-                printf("TOKEN_INCREMENT ");
-                break;
-            }
-
-            case TOKEN_LSH: {
-                printf("TOKEN_LSH ");
-                break;
-            }
-
-            case TOKEN_OR: {
-                printf("TOKEN_OR ");
-                break;
-            }
-
-            case TOKEN_AND: {
-                printf("TOKEN_AND ");
-                break;
-            }
-
-            case TOKEN_COMMA: {
-                printf("TOKEN_COMMA ");
-                break;
-            }
-
-            case TOKEN_EOF: {
-                printf("TOKEN_EOF\n");
-                break;
-            }
+            PRINT_CASE(TOKEN_VOID);
+            PRINT_CASE(TOKEN_INT);
+            PRINT_CASE(TOKEN_CHAR);
+            PRINT_CASE(TOKEN_IDENT);
+            PRINT_CASE(TOKEN_NUM);
+            PRINT_CASE(TOKEN_IF);
+            PRINT_CASE(TOKEN_WHILE);
+            PRINT_CASE(TOKEN_RETURN);
+            PRINT_CASE(TOKEN_ADD);
+            PRINT_CASE(TOKEN_SUB);
+            PRINT_CASE(TOKEN_STAR);
+            PRINT_CASE(TOKEN_LESS);
+            PRINT_CASE(TOKEN_GREATER);
+            PRINT_CASE(TOKEN_EQUAL);
+            PRINT_CASE(TOKEN_NOT);
+            PRINT_CASE(TOKEN_LSH);
+            PRINT_CASE(TOKEN_RSH);
+            PRINT_CASE(TOKEN_AND);
+            PRINT_CASE(TOKEN_XOR);
+            PRINT_CASE(TOKEN_OR);
+            PRINT_CASE(TOKEN_LOGICAL_NOT);
+            PRINT_CASE(TOKEN_LOGICAL_AND);
+            PRINT_CASE(TOKEN_LOGICAL_OR);
+            PRINT_CASE(TOKEN_INCREMENT);
+            PRINT_CASE(TOKEN_DECREMENT);
+            PRINT_CASE(TOKEN_ASSIGN);
+            PRINT_CASE(TOKEN_LPAR);
+            PRINT_CASE(TOKEN_RPAR);
+            PRINT_CASE(TOKEN_LBRACE);
+            PRINT_CASE(TOKEN_RBRACE);
+            PRINT_CASE(TOKEN_LBRACKET);
+            PRINT_CASE(TOKEN_RBRACKET);
+            PRINT_CASE(TOKEN_SEMICOLON);
+            PRINT_CASE(TOKEN_COMMA);
+            PRINT_CASE(TOKEN_EOF);
         }
     }
 }
@@ -254,6 +194,7 @@ token_t *arr;
 
 #define CRT_TYPE            get_current_token().type
 #define CRT_VAL             get_current_token().val
+#define CRT_TEXT            get_current_token().text
 #define OFFSET_CRT_TYPE(n)  (*(arr + n)).type
 
 token_t get_current_token() {
@@ -416,17 +357,17 @@ AST_node *parse_bitwise_shifts() {
 }
 
 // this function is ass. fix it
-AST_node *parse_bitwise_not() {
-    expect_and_consume(TOKEN_NOT);
+// AST_node *parse_bitwise_not() {
+//     expect_and_consume(TOKEN_NOT);
 
-    AST_node *bin_node = malloc(sizeof(AST_node));
-    bin_node->type = AST_BINARY_OP;
-    bin_node->as.binary_op.op = OP_NOT;
-    bin_node->as.binary_op.left = NULL;
-    bin_node->as.binary_op.right = parse_comparison();
+//     AST_node *bin_node = malloc(sizeof(AST_node));
+//     bin_node->type = AST_BINARY_OP;
+//     bin_node->as.binary_op.op = OP_NOT;
+//     bin_node->as.binary_op.left = NULL;
+//     bin_node->as.binary_op.right = parse_comparison();
 
-    return bin_node;
-}
+//     return bin_node;
+// }
 
 
 /*
@@ -518,7 +459,7 @@ AST_node *parse_factor() {
 
         if (OFFSET_CRT_TYPE(1) == TOKEN_LPAR) { // function call
             node->type = AST_FUNCTION_CALL;
-            node->as.function_call.name = strdup(get_current_token().text);
+            node->as.function_call.name = strdup(CRT_TEXT);
 
             consume(); // TOKEN_IDENT
             consume(); // TOKEN_LPAR
@@ -554,10 +495,24 @@ AST_node *parse_factor() {
 
             consume(); // TOKEN_RPAR
             return node;
+        } else if (OFFSET_CRT_TYPE(1) == TOKEN_INCREMENT || OFFSET_CRT_TYPE(1) == TOKEN_DECREMENT) {
+            AST_node *var_ref = malloc(sizeof(AST_node));
+            var_ref->type = AST_VAR_REF;
+            var_ref->as.var_ref.name = strdup(CRT_TEXT);
+            
+            node->type = AST_UNARY_OP;
+            node->as.unary_op.op = (enum unary_operator) (OFFSET_CRT_TYPE(1) - TOKEN_INCREMENT);
+            node->as.unary_op.prefix = false;
+            node->as.unary_op.operand = var_ref;
+
+            consume(); // TOKEN_IDENT
+            consume(); // TOKEN_INCREMENT
+
+            return node;
         }
 
         node->type = AST_VAR_REF;
-        node->as.var_ref.name = strdup(get_current_token().text);
+        node->as.var_ref.name = strdup(CRT_TEXT);
 
         consume(); // TOKEN_IDENT
         return node;
@@ -580,7 +535,7 @@ AST_node *parse_assignment() {
         node->as.var_decl.type = parse_type();
 
         expect(TOKEN_IDENT);
-        node->as.var_decl.name = strdup(get_current_token().text);
+        node->as.var_decl.name = strdup(CRT_TEXT);
         consume();
 
         if (CRT_TYPE == TOKEN_ASSIGN) {
@@ -598,13 +553,14 @@ AST_node *parse_assignment() {
     return NULL;
 }
 
-AST_node *parse_function_decl() {
+// this function assumes the type has already been parsed
+AST_node *__parse_function_decl_internal(Type *t) {
     AST_node *node = malloc(sizeof(AST_node));
     node->type = AST_FUNCTION_DECL;
-    node->as.function_decl.type = parse_type();
-    
+    node->as.function_decl.type = t;
+
     expect(TOKEN_IDENT);
-    node->as.function_decl.name = strdup(get_current_token().text);
+    node->as.function_decl.name = strdup(CRT_TEXT);
     consume();
 
     created_nodes++;
@@ -627,7 +583,7 @@ AST_node *parse_function_decl() {
             argv[argc]->as.var_decl.init = NULL;
 
             expect(TOKEN_IDENT);
-            argv[argc]->as.var_decl.name = strdup(get_current_token().text);
+            argv[argc]->as.var_decl.name = strdup(CRT_TEXT);
             consume(); // TOKEN_IDENT
 
             argc++;
@@ -665,13 +621,17 @@ AST_node *parse_function_decl() {
     return node;
 }
 
+AST_node *parse_function_decl() {
+    return __parse_function_decl_internal(parse_type());
+}
+
 AST_node *parse_function_call() {
     AST_node *node = (AST_node *) malloc(sizeof(AST_node));
     node->type = AST_FUNCTION_CALL;
 
     created_nodes++;
     expect(TOKEN_IDENT);
-    node->as.function_call.name = strdup(get_current_token().text);
+    node->as.function_call.name = strdup(CRT_TEXT);
 
     consume(); // TOKEN_IDENT
     expect_and_consume(TOKEN_LPAR);
@@ -722,8 +682,7 @@ AST_node *parse_if_statement() {
 
     created_nodes++;
     if (CRT_TYPE != TOKEN_LBRACE) {
-        // single line body
-        // not implemented
+        node->as.if_statement.body = parse_statement(false);
     } else {
         node->as.if_statement.body = parse_block();
     }
@@ -759,94 +718,74 @@ AST_node *parse_while() {
     return node;
 }
 
-AST_node *parse_statement() {
+AST_node *parse_statement(bool expect_semicolon) {
     AST_node *node = NULL;
 
     switch (CRT_TYPE) {
 
-        // variable assignment or function declaration
+        // variable or function declaration
+        case TOKEN_VOID:
         case TOKEN_INT:
-        case TOKEN_CHAR:
-        case TOKEN_VOID: {
-            /*
-                check "crt_token + 2": if its a variable decl. it would be TOKEN_ASSIGN or TOKEN_SEMICOLON,
-                if its a function declaration it would be TOKEN_LPAR
+        case TOKEN_CHAR: {
+            Type *t = parse_type(); // both cases start with a type declaration
 
-                token layout:
-                TOKEN_(type) TOKEN_IDENT TOKEN_ASSIGN/TOKEN_LPAR
-            */
+            if (OFFSET_CRT_TYPE(1) == TOKEN_ASSIGN || OFFSET_CRT_TYPE(1) == TOKEN_SEMICOLON) {
+                node = malloc(sizeof(AST_node));
+                node->type = AST_VAR_DECL;
+                node->as.var_decl.type = t;
+                node->as.var_decl.name = strdup(CRT_TEXT);
+                
+                consume(); // TOKEN_IDENT
 
-            if (OFFSET_CRT_TYPE(2) == TOKEN_ASSIGN || OFFSET_CRT_TYPE(2) == TOKEN_SEMICOLON) {
-                node = parse_assignment();
-                break;
-            } else if (OFFSET_CRT_TYPE(2) == TOKEN_LPAR) {
-                node = parse_function_decl();
-                break;
+                if (CRT_TYPE == TOKEN_ASSIGN) {
+                    consume();
+                    node->as.var_decl.init = parse_logical_expression();
+                } else {
+                    node->as.var_decl.init = NULL;
+                }
+            } else if (OFFSET_CRT_TYPE(1) == TOKEN_LPAR) {
+                node = __parse_function_decl_internal(t);
             }
+
+            break;
         }
 
-        // TODO: add pointer case in above cases
-
-        // either variable increment, inline operation or function call
         case TOKEN_IDENT: {
-            // inline operations are not yet implemented
             /*
-                check "crt_token + 1". if its an increment/decrement, it would be TOKEN_INCREMENT or TOKEN_DECREMENT
-                if its a function call it would be TOKEN_LPAR
+                The only cases where the first token in a line of code is an identifier would be:
+                1. Direct reassignment (x = a + b)
+                2. Augmented assignment (x += a + b)
+                3. Array element modification (arr[a] = x)
+                4. Function calling (func(x, y))
+                5. Increment/decrement (x++)
             */
 
             if (OFFSET_CRT_TYPE(1) == TOKEN_LPAR) {
                 node = parse_function_call();
                 break;
-            } else if (OFFSET_CRT_TYPE(1) == TOKEN_INCREMENT || OFFSET_CRT_TYPE(1) == TOKEN_DECREMENT) {
-                /* this block transforms x++ (or x--) to x = x +/- 1*/
-                AST_node *var_ref_left = malloc(sizeof(AST_node));
-                var_ref_left->type = AST_VAR_REF;
-                var_ref_left->as.var_ref.name = strdup(get_current_token().text);
+            } else if (OFFSET_CRT_TYPE(1) == TOKEN_ASSIGN || OFFSET_CRT_TYPE(1) == TOKEN_LBRACKET) {
+                // array access is not yet implemented
 
-                /*
-                    Creating a shallow copy of the var_ref node is required, as both sides of the
-                    binary operation (=), would eventually point to the same address, thus freeing one 
-                    would later cause a segmentation fault while trying to free the other
-                    (i.e. node->as.binary_op.left = right->as.binary_op.left = var_ref)
-                */
-                AST_node *var_ref_right = malloc(sizeof(AST_node));
-                var_ref_right->type = AST_VAR_REF;
-
-                /*
-                    For the same exact reason memcpy() is not used in this case.
-                    If memcpy() was used, both node names would point to the same address:
-                    var_ref_right->as.var_ref.name = var_ref_left->as.var_ref.name
-
-                    Therefore, a segmentation fault would be caused while freeing the names
-                */
-                var_ref_right->as.var_ref.name = strdup(get_current_token().text);
-
-                consume(); // TOKEN_IDENT
+                AST_node *var_ref = malloc(sizeof(AST_node));
+                var_ref->type = AST_VAR_REF;
+                var_ref->as.var_ref.name = strdup(CRT_TEXT);
 
                 node = malloc(sizeof(AST_node));
                 node->type = AST_BINARY_OP;
                 node->as.binary_op.op = OP_ASSIGN;
-                node->as.binary_op.left = var_ref_left;
-
-                AST_node *right = malloc(sizeof(AST_node));
-                right->type = AST_BINARY_OP;
-                if (CRT_TYPE == TOKEN_INCREMENT) right->as.binary_op.op = OP_ADD;
-                else right->as.binary_op.op = OP_SUB;
-                right->as.binary_op.left = var_ref_right;
-
-                AST_node *int_literal = malloc(sizeof(AST_node));
-                int_literal->type = AST_INT_LITERAL;
-                int_literal->as.int_literal.value = 1;
-
-                right->as.binary_op.right = int_literal;
-                node->as.binary_op.right = right;
-
-                created_nodes += 4;
-                consume(); // TOKEN_INCREMENT
+                node->as.binary_op.left = var_ref;
+                
+                consume(); // TOKEN_IDENT
+                consume(); // TOKEN_ASSIGN
+                node->as.binary_op.right = parse_logical_expression();
 
                 break;
+            } else if (OFFSET_CRT_TYPE(1) == TOKEN_INCREMENT || OFFSET_CRT_TYPE(1) == TOKEN_DECREMENT) {
+                node = parse_term();
+                break;
             }
+
+            // augmented operations are not yet implemented
         }
 
         case TOKEN_NUM: {
@@ -869,9 +808,27 @@ AST_node *parse_statement() {
             break;
         }
 
+        // ++x
+        case TOKEN_INCREMENT:
+        case TOKEN_DECREMENT: {
+            node = malloc(sizeof(AST_node));
+            node->type = AST_UNARY_OP;
+            node->as.unary_op.op = (enum unary_operator) (CRT_TYPE - TOKEN_INCREMENT);
+            node->as.unary_op.prefix = true;
+
+            consume(); // TOKEN_INCREMENT
+            expect(TOKEN_IDENT);
+            AST_node *var_ref = malloc(sizeof(AST_node));
+            var_ref->type = AST_VAR_REF;
+            var_ref->as.var_ref.name = strdup(CRT_TEXT);
+
+            node->as.unary_op.operand = var_ref;
+            consume(); // TOKEN_IDENT
+            break;
+        }
+
         case TOKEN_ADD:
         case TOKEN_SUB:
-        case TOKEN_STAR: // this might be a dereference, implement later !!!
         case TOKEN_LESS:
         case TOKEN_GREATER:
         case TOKEN_EQUAL:
@@ -884,13 +841,13 @@ AST_node *parse_statement() {
         case TOKEN_LOGICAL_NOT:
         case TOKEN_LOGICAL_AND:
         case TOKEN_LOGICAL_OR:
-        case TOKEN_INCREMENT: // might be ++x
-        case TOKEN_DECREMENT: // same thing
         case TOKEN_ASSIGN:
         case TOKEN_LPAR:
         case TOKEN_RPAR:
         case TOKEN_LBRACE:
         case TOKEN_RBRACE:
+        case TOKEN_LBRACKET:
+        case TOKEN_RBRACKET:
         case TOKEN_SEMICOLON:
         case TOKEN_COMMA: {
             fprintf(stderr, "Syntax error: Unexpected token %d\n", CRT_TYPE);
@@ -899,9 +856,10 @@ AST_node *parse_statement() {
     }
 
     // a block was just parsed, therefore a semicolon is not required
-    if ((*(arr - 1)).type != TOKEN_RBRACE) {
+    if ((*(arr - 1)).type != TOKEN_RBRACE && expect_semicolon) {
         expect_and_consume(TOKEN_SEMICOLON);
     }
+
     return node;
 }
 
@@ -927,7 +885,7 @@ AST_node *parse_block() {
             return NULL;
         }
 
-        node->as.block.statements[node->as.block.count++] = parse_statement();
+        node->as.block.statements[node->as.block.count++] = parse_statement(true);
     }
 
     if (node->as.block.count < capacity) {
@@ -953,7 +911,7 @@ AST_node *parse_program() {
             node->as.program.declarations = (AST_node **) realloc(node->as.program.declarations, capacity * sizeof(AST_node*));
         }
 
-        AST_node *statement = parse_statement();
+        AST_node *statement = parse_statement(true);
         if (statement->type == AST_VAR_DECL || statement->type == AST_FUNCTION_DECL) {
             node->as.program.declarations[node->as.program.count++] = statement;
             continue;
@@ -982,14 +940,6 @@ void __print_tabs(int depth) {
     return;
 }
 
-#define PRINT_CASE(c) \
-    case c: { \
-        printf(#c "\n"); \
-        break; \
-    }
-
-
-
 void print_binary_operator(enum binop_operator op) {
     switch (op) {
         PRINT_CASE(OP_ADD);
@@ -998,18 +948,25 @@ void print_binary_operator(enum binop_operator op) {
         PRINT_CASE(OP_LESS);
         PRINT_CASE(OP_GREATER);
         PRINT_CASE(OP_EQUAL);
-        PRINT_CASE(OP_NOT);
         PRINT_CASE(OP_LSH);
         PRINT_CASE(OP_RSH);
         PRINT_CASE(OP_AND)
         PRINT_CASE(OP_XOR);
         PRINT_CASE(OP_OR);
-        PRINT_CASE(OP_LOGICAL_NOT)
         PRINT_CASE(OP_LOGICAL_AND);
         PRINT_CASE(OP_LOGICAL_OR);
+        PRINT_CASE(OP_ASSIGN);
+    }
+}
+
+void print_unary_operator(enum unary_operator op) {
+    switch (op) {
         PRINT_CASE(OP_INCREMENT);
         PRINT_CASE(OP_DECREMENT);
-        PRINT_CASE(OP_ASSIGN);
+        PRINT_CASE(OP_NOT);
+        PRINT_CASE(OP_LOGICAL_NOT);
+        PRINT_CASE(OP_DEREFERENCE);
+        PRINT_CASE(OP_POINTER);
     }
 }
 
@@ -1021,6 +978,7 @@ void print_data_type(enum data_type type) {
         PRINT_CASE(TYPE_POINTER);
         PRINT_CASE(TYPE_FUNCTION);
         PRINT_CASE(TYPE_ARRAY);
+        PRINT_CASE(TYPE_STRUCT);
     }
 }
 
@@ -1055,6 +1013,32 @@ void print_type(Type *t, int d) {
                 for (int i = 0; i < t->function.count; i++) {
                     print_type(t->function.params[i], d+1);
                 }
+            }
+
+            break;
+        }
+
+        case TYPE_ARRAY: {
+            __print_tabs(d);
+            printf("member count: %d\n", t->array.count);
+
+            __print_tabs(d);
+            printf("MEMBER_TYPE\n");
+            print_type(t->array.memb_type, d+1);
+
+            break;
+        }
+
+        case TYPE_STRUCT: {
+            __print_tabs(d);
+            printf("STRUCT_MEMBERS(count=%d)\n", t->structure.count);
+            for (int i = 0; i < t->structure.count; i++) {
+                __print_tabs(d);
+                printf("MEMBER %d\n", i);
+
+                __print_tabs(d+1);
+                printf("name: %s\n", t->structure.memb_names[i]);
+                print_type(t->structure.memb_types[i], d+1);
             }
 
             break;
@@ -1124,6 +1108,24 @@ void print_child(AST_node *node) {
             __print_tabs(depth-1);
             printf("RIGHT (BINARY_OP)\n");
             print_child(node->as.binary_op.right);
+
+            depth -= 2;
+            break;
+        }
+
+        case AST_UNARY_OP: {
+            __print_tabs(depth);
+            printf("UNARY_OP\n");
+            __print_tabs(++depth);
+            printf("operator: ");
+            print_unary_operator(node->as.unary_op.op);
+
+            __print_tabs(depth);
+            printf("prefix: %s\n", node->as.unary_op.prefix ? "true" : "false");
+
+            __print_tabs(depth++);
+            printf("OPERAND (UNARY_OP)\n");
+            print_child(node->as.unary_op.operand);
 
             depth -= 2;
             break;
@@ -1335,6 +1337,11 @@ void free_child(AST_node *node) {
         case AST_BINARY_OP: {
             free_child(node->as.binary_op.left);
             free_child(node->as.binary_op.right);
+            break;
+        }
+
+        case AST_UNARY_OP: {
+            free_child(node->as.unary_op.operand);
             break;
         }
 
