@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ast.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -9,6 +10,7 @@ enum AST_node_type {
     AST_VAR_REF,
     AST_VAR_DECL,
     AST_BINARY_OP,
+    AST_UNARY_OP,
     AST_IF,
     AST_WHILE,
     AST_RETURN,
@@ -24,7 +26,8 @@ enum data_type {
     TYPE_CHAR,
     TYPE_POINTER,
     TYPE_FUNCTION,
-    TYPE_ARRAY
+    TYPE_ARRAY,
+    TYPE_STRUCT
 };
 
 enum binop_operator {
@@ -34,18 +37,23 @@ enum binop_operator {
     OP_LESS,
     OP_GREATER,
     OP_EQUAL,
-    OP_NOT,
     OP_LSH,
     OP_RSH,
     OP_AND,
     OP_XOR,
     OP_OR,
-    OP_LOGICAL_NOT,
     OP_LOGICAL_AND,
     OP_LOGICAL_OR,
+    OP_ASSIGN
+};
+
+enum unary_operator {
     OP_INCREMENT,
     OP_DECREMENT,
-    OP_ASSIGN
+    OP_NOT,
+    OP_LOGICAL_NOT,
+    OP_DEREFERENCE,
+    OP_POINTER
 };
 
 
@@ -98,6 +106,13 @@ typedef struct AST_node {
             struct AST_node *left;
             struct AST_node *right;
         } binary_op;
+
+        struct {
+            enum unary_operator op;
+            bool prefix; // true if the operator is placed before the operand (i.e. ++x) 
+
+            struct AST_node *operand;
+        } unary_op;
 
         struct {
             struct AST_node *condition;
