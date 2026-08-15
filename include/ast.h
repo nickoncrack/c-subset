@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ast.h"
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -163,7 +162,7 @@ typedef struct AST_node {
 } AST_node;
 
 AST_node *parse_block();
-AST_node *parse_statement();
+AST_node *parse_statement(bool);
 AST_node *parse_logical_expression();
 AST_node *parse_bitwise_operations();
 AST_node *parse_comparison();
