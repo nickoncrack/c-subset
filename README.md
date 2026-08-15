@@ -7,16 +7,15 @@ Note: this project is at a very early stage, it is not even close to being compl
 ## Todos
 
 + ~~AST free function~~
-+ Improve distinction code for variable assignment and function declaration
++ ~~Improve distinction code for variable assignment and function declaration~~
 + ~~Fix nested function calls~~
 + ~~Fix function calls inside if/while condition~~
 + Add function type parsing and arrays
-+ Add unary operators: increment, decrement, bitwise/logical not, pointer dereference
-+ Fix parse_bitwise_not(), its ass
++ ~~Add unary operators: increment, decrement,~~ bitwise/logical not, pointer dereference
 + Add greater/less or equal, not equal tokens
-+ Add inline operations (i.e. x <<= 2)
-+ Add prefix/suffix increment and decrement
-+ Add else if/else branch parsing and single line branch that does not require braces
++ Add augmented assignment (i.e. x += 2)
++ ~~Add prefix/suffix increment and decrement~~
++ Add else if/else branch parsing ~~and single line branch that does not require braces~~
 + Add for loops, break and continue keywords
 + Add struct type parsing and struct member accses
 + Add type casts and sizeof()
