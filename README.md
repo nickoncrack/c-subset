@@ -11,7 +11,7 @@ Note: this project is at a very early stage, it is not even close to being compl
 + ~~Fix nested function calls~~
 + ~~Fix function calls inside if/while condition~~
 + Add function type parsing and arrays
-+ ~~Add unary operators: increment, decrement,~~ bitwise/logical not, pointer dereference
++ ~~Add unary operators: increment, decrement, bitwise/logical not,~~ pointer dereference
 + ~~Add greater/less or equal, not equal tokens~~
 + ~~Add augmented assignment (i.e. x += 2)~~
 + ~~Add prefix/suffix increment and decrement~~
