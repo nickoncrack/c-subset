@@ -19,4 +19,5 @@ Note: this project is at a very early stage, it is not even close to being compl
 + Add for loops, ~~break and continue keywords~~
 + Add struct type parsing and struct member accses
 + Add type casts ~~and sizeof()~~
++ Add error reporting
 + Semantic analysis (hopefully)
