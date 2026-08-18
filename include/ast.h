@@ -21,6 +21,7 @@ enum AST_node_type {
     AST_STRUCT_DECL,
     AST_STRUCT_ACCESS,
     AST_ARRAY_ACCESS,
+    AST_TYPE_CAST,
     AST_BLOCK,
     AST_PROGRAM
 };
@@ -178,6 +179,11 @@ typedef struct AST_node {
             struct AST_node *array;
             struct AST_node *index;
         } array_access;
+
+        struct {
+            Type *type;
+            struct AST_node *operand;
+        } type_cast;
 
         struct {
             struct AST_node **statements;
