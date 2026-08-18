@@ -519,6 +519,17 @@ AST_node *parse_factor() {
 
         expect_and_consume(TOKEN_RPAR);
         return ret;
+    } else if (CRT_TYPE == TOKEN_LPAR) { // type cast
+        consume();
+        Type *t = parse_type();
+        
+        expect_and_consume(TOKEN_RPAR);
+        AST_node *ret = malloc(sizeof(AST_node));
+        ret->type = AST_TYPE_CAST;
+        ret->as.type_cast.type = t;
+        ret->as.type_cast.operand = parse_factor(); // (char) sizeof(uint32_t) is valid for example
+
+        return ret;
     }
 
     return parse_postfix_expression();
@@ -1144,7 +1155,9 @@ AST_node *parse_statement(bool expect_semicolon) {
         case TOKEN_LBRACKET:
         case TOKEN_RBRACKET:
         case TOKEN_SEMICOLON:
-        case TOKEN_COMMA: {
+        case TOKEN_COMMA:
+        case TOKEN_MEMB_ACCESS:
+        case TOKEN_PTR_MEMB_ACCESS: {
             printf("Syntax error: Unexpected token ");
             print_token(CRT_TYPE);
             break;
@@ -1567,7 +1580,7 @@ void print_child(AST_node *node) {
             printf("name: %s\n", node->as.function_decl.name);
 
             __print_tabs(depth);
-            printf("TYPE (FUNCTION_DECL)\n");
+            printf("RETURN_TYPE (FUNCTION_DECL)\n");
 
             depth++;
             print_type(node->as.function_decl.type, depth);
@@ -1673,6 +1686,22 @@ void print_child(AST_node *node) {
             __print_tabs(depth-1);
             printf("INDEX (ARRAY_ACCESS)\n");
             print_child(node->as.array_access.index);
+
+            depth -= 2;
+            break;
+        }
+
+        case AST_TYPE_CAST: {
+            __print_tabs(depth);
+            printf("TYPE_CAST\n");
+
+            __print_tabs(++depth);
+            printf("TYPE (TYPE_CAST)\n");
+            print_type(node->as.type_cast.type, depth+1);
+
+            __print_tabs(depth++);
+            printf("OPERAND (TYPE_CAST)\n");
+            print_child(node->as.type_cast.operand);
 
             depth -= 2;
             break;
@@ -1835,6 +1864,34 @@ void free_child(AST_node *node) {
 
             free_child(node->as.function_call.callee);
             free(node->as.function_call.args);
+            break;
+        }
+
+        case AST_STRUCT_DECL: {
+            for (int i = 0; i < node->as.struct_decl.count; i++) {
+                free_child(node->as.struct_decl.memb_decl[i]);
+            }
+
+            free(node->as.struct_decl.name);
+            free(node->as.struct_decl.memb_decl);
+            break;
+        }
+
+        case AST_STRUCT_ACCESS: {
+            free(node->as.struct_access.member);
+            free_child(node->as.struct_access.src);
+            break;
+        }
+
+        case AST_ARRAY_ACCESS: {
+            free_child(node->as.array_access.array);
+            free_child(node->as.array_access.index);
+            break;
+        }
+
+        case AST_TYPE_CAST: {
+            free_type(node->as.type_cast.type);
+            free_child(node->as.type_cast.operand);
             break;
         }
 
