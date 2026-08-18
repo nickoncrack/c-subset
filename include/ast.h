@@ -12,11 +12,15 @@ enum AST_node_type {
     AST_UNARY_OP,
     AST_IF,
     AST_WHILE,
+    AST_FOR,
     AST_RETURN,
     AST_FUNCTION_DECL,
     AST_FUNCTION_CALL,
     AST_BREAK,
     AST_CONTINUE,
+    AST_STRUCT_DECL,
+    AST_STRUCT_ACCESS,
+    AST_ARRAY_ACCESS,
     AST_BLOCK,
     AST_PROGRAM
 };
@@ -80,6 +84,7 @@ typedef struct Type {
         } array;
 
         struct {
+            char *name;
             struct Type **memb_types;
             char **memb_names;
             int count;
@@ -131,6 +136,13 @@ typedef struct AST_node {
         } while_statement;
 
         struct {
+            struct AST_node *init;
+            struct AST_node *condition;
+            struct AST_node *updation;
+            struct AST_node *body;
+        } for_statement;
+
+        struct {
             struct AST_node *expr;
         } return_statement;
 
@@ -145,10 +157,27 @@ typedef struct AST_node {
         } function_decl;
 
         struct {
-            char *name;
+            struct AST_node *callee;
             struct AST_node **args;
             int count;
         } function_call;
+
+        struct {
+            char *name;
+            struct AST_node **memb_decl;
+            int count;
+        } struct_decl;
+
+        struct {
+            struct AST_node *src;
+            char *member;
+            bool pointer; // true if access symbol is ->
+        } struct_access;
+
+        struct {
+            struct AST_node *array;
+            struct AST_node *index;
+        } array_access;
 
         struct {
             struct AST_node **statements;
@@ -173,3 +202,4 @@ AST_node *parse_logical_expression();
 AST_node *parse_bitwise_operations();
 AST_node *parse_comparison();
 AST_node *parse_expression();
+AST_node *parse_postfix_expression();
