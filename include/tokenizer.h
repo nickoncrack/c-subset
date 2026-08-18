@@ -11,6 +11,7 @@ enum tokentype {
     TOKEN_IF,
     TOKEN_ELSE,
     TOKEN_WHILE,
+    TOKEN_FOR,
     TOKEN_RETURN,
     TOKEN_ADD,
     TOKEN_SUB,
@@ -44,6 +45,9 @@ enum tokentype {
     TOKEN_SIZEOF,
     TOKEN_BREAK,
     TOKEN_CONTINUE,
+    TOKEN_STRUCT,
+    TOKEN_MEMB_ACCESS,
+    TOKEN_PTR_MEMB_ACCESS,
     TOKEN_EOF
 };
 
