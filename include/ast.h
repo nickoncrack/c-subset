@@ -62,7 +62,7 @@ enum unary_operator {
     OP_NOT,
     OP_LOGICAL_NOT,
     OP_DEREFERENCE,
-    OP_POINTER,
+    OP_ADDRESS_OF,
     OP_SIZEOF
 };
 
