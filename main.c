@@ -198,8 +198,8 @@ token_t get_current_token() {
 }
 
 void consume() {
-    printf("DEBUG: Consuming ");
-    print_token(CRT_TYPE);
+    // printf("DEBUG: Consuming ");
+    // print_token(CRT_TYPE);
     arr++;
     return;
 }
@@ -496,6 +496,20 @@ AST_node *parse_primary() {
     return NULL;
 }
 
+AST_node *__parse_dereference_or_address_of() {
+    AST_node *ret = malloc(sizeof(AST_node));
+    ret->type = AST_UNARY_OP;
+    ret->as.unary_op.op = (CRT_TYPE == TOKEN_AND) ? OP_ADDRESS_OF : OP_DEREFERENCE;
+    ret->as.unary_op.prefix = true;
+
+    printf("__parse_dereference_or_address_of:");
+    print_token(CRT_TYPE);
+    consume();
+    ret->as.unary_op.operand = parse_postfix_expression();
+
+    return ret;
+}
+
 AST_node *parse_factor() {
     // prefix operators
     if (CRT_TYPE == TOKEN_NOT || CRT_TYPE == TOKEN_LOGICAL_NOT) {
@@ -530,33 +544,11 @@ AST_node *parse_factor() {
         ret->as.type_cast.operand = parse_factor(); // (char) sizeof(uint32_t) is valid for example
 
         return ret;
+    } else if (CRT_TYPE == TOKEN_STAR || CRT_TYPE == TOKEN_AND) {
+        return __parse_dereference_or_address_of();
     }
 
     return parse_postfix_expression();
-}
-
-AST_node *parse_assignment() {
-    if (IS_CRT_TYPE) {
-        AST_node *node = malloc(sizeof(AST_node));
-        node->type = AST_VAR_DECL;
-        node->as.var_decl.type = parse_type();
-
-        expect(TOKEN_IDENT);
-        node->as.var_decl.name = strdup(CRT_TEXT);
-        consume();
-
-        if (CRT_TYPE == TOKEN_ASSIGN) {
-            consume();
-            node->as.var_decl.init = parse_logical_expression();
-        } else {
-            node->as.var_decl.init = NULL;
-        }
-
-        return node;
-    }
-
-    perror("Syntax error\n");
-    return NULL;
 }
 
 // this function assumes the type has already been parsed
@@ -663,10 +655,10 @@ AST_node **parse_call_args(int *argc) {
     return argv;
 }
 
-void print_child(AST_node *);
 AST_node *parse_postfix_expression() {
     AST_node *node = parse_primary();
 
+    print_token(CRT_TYPE);
     while (1) {
         if (CRT_TYPE == TOKEN_LPAR) { // function call
             AST_node *call_node = malloc(sizeof(AST_node));
@@ -901,6 +893,38 @@ AST_node *__deep_copy_node(AST_node *node) {
             break;
         }
 
+        case AST_WHILE: {
+            ret->as.while_statement.body = __deep_copy_node(node->as.while_statement.body);
+            ret->as.while_statement.condition = __deep_copy_node(node->as.while_statement.condition);
+            break;
+        }
+
+        case AST_FOR: {
+            ret->as.for_statement.init = __deep_copy_node(node->as.for_statement.init);
+            ret->as.for_statement.condition = __deep_copy_node(node->as.for_statement.condition);
+            ret->as.for_statement.updation = __deep_copy_node(node->as.for_statement.updation);
+            ret->as.for_statement.body = __deep_copy_node(node->as.for_statement.body);
+            break;
+        }
+
+        case AST_RETURN: {
+            ret->as.return_statement.expr = __deep_copy_node(node->as.return_statement.expr);
+            break;
+        }
+
+        case AST_FUNCTION_DECL: {
+            ret->as.function_decl.count = node->as.function_decl.count;
+            ret->as.function_decl.name = strdup(node->as.function_decl.name);
+            ret->as.function_decl.type = __deep_copy_type(node->as.function_decl.type);
+            ret->as.function_decl.body = __deep_copy_node(node->as.function_decl.body);
+            ret->as.function_decl.args = calloc(node->as.function_call.count, sizeof(AST_node*));
+
+            for (int i = 0; i < node->as.function_decl.count; i++) {
+                ret->as.function_decl.args[i] = __deep_copy_node(node->as.function_decl.args[i]);
+            }
+            break;
+        }
+
         case AST_FUNCTION_CALL: {
             ret->as.function_call.callee = __deep_copy_node(node->as.function_call.callee);
             ret->as.function_call.count = node->as.function_call.count;
@@ -908,6 +932,17 @@ AST_node *__deep_copy_node(AST_node *node) {
 
             for (int i = 0; i < node->as.function_call.count; i++) {
                 ret->as.function_call.args[i] = __deep_copy_node(node->as.function_call.args[i]);
+            }
+            break;
+        }
+
+        case AST_STRUCT_DECL: {
+            ret->as.struct_decl.count = node->as.struct_decl.count;
+            ret->as.struct_decl.name = strdup(node->as.struct_decl.name);
+            ret->as.struct_decl.memb_decl = calloc(node->as.struct_decl.count, sizeof(AST_node*));
+
+            for (int i = 0; i < node->as.struct_decl.count; i++) {
+                ret->as.struct_decl.memb_decl[i] = __deep_copy_node(node->as.struct_decl.memb_decl[i]);
             }
             break;
         }
@@ -924,9 +959,54 @@ AST_node *__deep_copy_node(AST_node *node) {
             ret->as.array_access.index = __deep_copy_node(node->as.array_access.index);
             break;
         }
+
+        case AST_TYPE_CAST: {
+            ret->as.type_cast.type = __deep_copy_type(node->as.type_cast.type);
+            ret->as.type_cast.operand = __deep_copy_node(node->as.type_cast.operand);
+            break;
+        }
     }
 
     return ret;
+}
+
+// this function assumes that the lvalue of the assignment is already parsed
+AST_node *__parse_assignment(AST_node *left) {
+    AST_node *node = left;
+
+    if (CRT_TYPE - TOKEN_ADD < OP_ASSIGN) { // augmented assignment
+        /*
+            Augmented assignment will just be transformed into a reassignment.
+            i.e. x (op)= b is transformed into x = x (op) (b)
+        */
+
+        AST_node *node_right = __deep_copy_node(left);
+
+        AST_node *right = malloc(sizeof(AST_node));
+        right->type = AST_BINARY_OP;
+        right->as.binary_op.op = CRT_TYPE - TOKEN_ADD;
+        right->as.binary_op.left = node_right;
+        
+        consume(); // operator
+        consume(); // TOKEN_ASSIGN
+        right->as.binary_op.right = parse_logical_expression();
+
+        node = malloc(sizeof(AST_node));
+        node->type = AST_BINARY_OP;
+        node->as.binary_op.op = OP_ASSIGN;
+        node->as.binary_op.left = left;
+        node->as.binary_op.right = right;
+    } else if (CRT_TYPE == TOKEN_ASSIGN) {
+        consume();
+
+        node = malloc(sizeof(AST_node));
+        node->type = AST_BINARY_OP;
+        node->as.binary_op.op = OP_ASSIGN;
+        node->as.binary_op.left = left;
+        node->as.binary_op.right = parse_logical_expression();
+    }
+
+    return node;
 }
 
 AST_node *parse_statement(bool expect_semicolon) {
@@ -967,47 +1047,27 @@ AST_node *parse_statement(bool expect_semicolon) {
                 break;
             }
 
-            if (CRT_TYPE == TOKEN_ASSIGN) {
-                consume();
+            node = __parse_assignment(left);
+            break;
+        }
 
-                node = malloc(sizeof(AST_node));
-                node->type = AST_BINARY_OP;
-                node->as.binary_op.op = OP_ASSIGN;
-                node->as.binary_op.left = left;
-                node->as.binary_op.right = parse_logical_expression();
+        case TOKEN_STAR: {// pointer dereference
+            AST_node *left = __parse_dereference_or_address_of();
+            node = __parse_assignment(left);
 
-                break;
-            } else if (CRT_TYPE - TOKEN_ADD <= OP_ASSIGN) {
-                /*
-                    Augmented assignment will just be transformed into a reassignment.
-                    i.e. x (op)= b is transformed into x = x (op) (b)
-                */
-
-                AST_node *node_right = __deep_copy_node(left);
-
-                AST_node *right = malloc(sizeof(AST_node));
-                right->type = AST_BINARY_OP;
-                right->as.binary_op.op = CRT_TYPE - TOKEN_ADD;
-                right->as.binary_op.left = node_right;
-                
-                consume(); // operator
-                consume(); // TOKEN_ASSIGN
-                right->as.binary_op.right = parse_logical_expression();
-
-                node = malloc(sizeof(AST_node));
-                node->type = AST_BINARY_OP;
-                node->as.binary_op.op = OP_ASSIGN;
-                node->as.binary_op.left = left;
-                node->as.binary_op.right = right;
-
-                break;
+            if (node == left) {
+                // no assignment operator
+                printf("Warning: Expression result unused\n");
             }
+
+            break;
         }
 
         case TOKEN_NUM:
         case TOKEN_NOT:
         case TOKEN_LOGICAL_NOT:
-        case TOKEN_SIZEOF: {
+        case TOKEN_SIZEOF:
+        case TOKEN_AND: {
             printf("Warning: Expression result unused\n");
             break;
         }
@@ -1142,7 +1202,6 @@ AST_node *parse_statement(bool expect_semicolon) {
         case TOKEN_NE:
         case TOKEN_LSH:
         case TOKEN_RSH:
-        case TOKEN_AND:
         case TOKEN_XOR:
         case TOKEN_OR:
         case TOKEN_LOGICAL_AND:
@@ -1160,6 +1219,11 @@ AST_node *parse_statement(bool expect_semicolon) {
         case TOKEN_PTR_MEMB_ACCESS: {
             printf("Syntax error: Unexpected token ");
             print_token(CRT_TYPE);
+            break;
+        }
+
+        case TOKEN_EOF: {
+            printf("Unexpected end of file\n");
             break;
         }
     }
@@ -1327,7 +1391,7 @@ void print_unary_operator(enum unary_operator op) {
         PRINT_CASE(OP_NOT);
         PRINT_CASE(OP_LOGICAL_NOT);
         PRINT_CASE(OP_DEREFERENCE);
-        PRINT_CASE(OP_POINTER);
+        PRINT_CASE(OP_ADDRESS_OF);
         PRINT_CASE(OP_SIZEOF);
     }
 }
@@ -1940,10 +2004,11 @@ int main(void) {
     uint32_t tokens = tokenize(program, arr);
     printf("%d tokens parsed\n", tokens);
 
-    for (int i = 0; i < tokens; i++) {
-        print_token(arr[i].type);
-    }
+    // for (int i = 0; i < tokens; i++) {
+    //     print_token(arr[i].type);
+    // }
 
+    printf("=========================\n");
     AST_node *program = parse_program();
 
     print_AST(program);
