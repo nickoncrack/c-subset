@@ -75,7 +75,7 @@ typedef struct Type {
 
         struct {
             struct Type *return_type;
-            struct Type **params;
+            struct Declarator **params;
             int count;
         } function;
 
@@ -86,12 +86,16 @@ typedef struct Type {
 
         struct {
             char *name;
-            struct Type **memb_types;
-            char **memb_names;
+            struct Declarator **members;
             int count;
         } structure;
     };
 } Type;
+
+typedef struct Declarator {
+    Type *type;
+    char *ident;
+} Declarator;
 
 
 typedef struct AST_node {
@@ -107,8 +111,7 @@ typedef struct AST_node {
         } var_ref;
 
         struct {
-            Type *type;
-            char *name;
+            Declarator *decl;
             struct AST_node *init;
         } var_decl;
 
@@ -148,12 +151,7 @@ typedef struct AST_node {
         } return_statement;
 
         struct {
-            Type *type;
-            char *name;
-            
-            struct AST_node **args;
-            int count;
-
+            Declarator *decl;
             struct AST_node *body;
         } function_decl;
 
@@ -165,7 +163,7 @@ typedef struct AST_node {
 
         struct {
             char *name;
-            struct AST_node **memb_decl;
+            Declarator **members;
             int count;
         } struct_decl;
 
