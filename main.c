@@ -198,8 +198,8 @@ token_t get_current_token() {
 }
 
 void consume() {
-    // printf("DEBUG: Consuming ");
-    // print_token(CRT_TYPE);
+    printf("DEBUG: Consuming ");
+    print_token(CRT_TYPE);
     arr++;
     return;
 }
@@ -218,42 +218,214 @@ void expect_and_consume(enum tokentype token) {
     consume();
 }
 
+Type *__parse_pointers(Type *t) {
+    while (CRT_TYPE == TOKEN_STAR) {
+        t->type = TYPE_POINTER;
+        t->pointee = malloc(sizeof(Type));
+        t = t->pointee;
+
+        consume(); // TOKEN_STAR
+    }
+
+    return t;
+}
+
+Type *__parse_arrays(Type *t, bool expect_int) {
+    while (CRT_TYPE == TOKEN_LBRACKET) {
+        consume();
+        t->type = TYPE_ARRAY;
+        if (expect_int) {
+            expect(TOKEN_NUM);
+            t->array.count = CRT_VAL;
+            consume();
+        } else {
+            t->array.count = 0;
+        }
+
+        t->array.memb_type = malloc(sizeof(Type));
+        t = t->array.memb_type;
+
+        expect_and_consume(TOKEN_RBRACKET);
+    }
+
+    return t;
+}
+
+
 Type *parse_type() {
-    if ((int) CRT_TYPE >= 3 && CRT_TYPE != TOKEN_STRUCT) {
-        fprintf(stderr, "Syntax error: Expected type declaration, got %d", CRT_TYPE);
+    if ((int) CRT_TYPE > TYPE_CHAR && CRT_TYPE != TOKEN_STRUCT) {
+        fprintf(stderr, "Syntax error: Expected type specifier\n");
         return NULL;
     }
 
-    Type *type = malloc(sizeof(Type));
-    Type *root_type = type;
-    char *struct_name = NULL;
-
-    enum data_type final;
+    Type *ret = malloc(sizeof(Type));
 
     if (CRT_TYPE == TOKEN_STRUCT) {
-        final = TYPE_STRUCT;
-        
         consume(); // TOKEN_STRUCT
-        expect(TOKEN_IDENT);
-        struct_name = strdup(CRT_TEXT);
-    }
-    else final = (enum data_type) CRT_TYPE;
+        expect(TOKEN_IDENT); // struct name
 
-    consume();
-    while (CRT_TYPE == TOKEN_STAR) {
-        type->type = TYPE_POINTER;
-        type->pointee = malloc(sizeof(Type));
+        ret->type = TYPE_STRUCT;
+        ret->structure.name = strdup(CRT_TEXT);
 
-        type = type->pointee;
+        consume(); // TOKEN_IDENT
+    } else {
+        ret->type = (enum data_type) CRT_TYPE;
         consume();
     }
 
-    type->type = final;
-    if (final == TYPE_STRUCT) {
-        type->structure.name = struct_name;
+    return ret;
+}
+
+void parse_function_args(Type *t, bool require_arg_identifiers) {
+    expect_and_consume(TOKEN_LPAR);
+
+    int capacity = 8;
+    t->function.count = 0;
+    t->function.params = calloc(8, sizeof(Declarator*));
+
+    while (CRT_TYPE != TOKEN_RPAR) {
+        if (t->function.count == capacity) {
+            capacity += 2;
+            REALLOC(t->function.params, capacity * sizeof(Declarator*));
+        }
+
+        // parse type identifier
+        Type *type = parse_type();
+
+        t->function.params[t->function.count] = malloc(sizeof(Declarator));
+        t->function.params[t->function.count]->type = malloc(sizeof(Type));
+
+        /*
+            root_type is created since all the parser functions used here work recursively,
+            so after each recursion, t->function.params[t->function.count]->type contains the leaf
+            node (the bottom-most node)
+        */
+        Type *root_type = t->function.params[t->function.count]->type;
+
+        if (!require_arg_identifiers) {
+            /*
+                Pointer parsing is not placed in the outer scope since when an array token
+                is placed after an identifier, it implies that the type is an array of [type]
+
+                Example: char *argv[] is an array of pointers to char
+            */
+            t->function.params[t->function.count]->type = __parse_pointers(
+                t->function.params[t->function.count]->type
+            );
+
+            // simple assignment causes a segfault
+            memcpy(t->function.params[t->function.count]->type, type, sizeof(Type));
+            
+            if (CRT_TYPE == TOKEN_IDENT) consume(); // ignore identifiers on function pointers
+            
+            goto label1;
+        }
+
+        // parse pointers now and copy them over as member type once arrays are parsed
+        Type *pointers = malloc(sizeof(Type));
+        Type *pointers_root = pointers;
+        pointers = __parse_pointers(pointers);
+        memcpy(pointers, type, sizeof(Type));
+
+        expect(TOKEN_IDENT);
+        t->function.params[t->function.count]->ident = strdup(CRT_TEXT);
+        consume(); // TOKEN_IDENT
+
+        t->function.params[t->function.count]->type = __parse_arrays(
+            t->function.params[t->function.count]->type, false
+        );
+        memcpy(t->function.params[t->function.count]->type, pointers_root, sizeof(Type));
+
+        label1:
+            t->function.params[t->function.count]->type = root_type;
+            t->function.count++;
+
+            if (CRT_TYPE != TOKEN_COMMA && CRT_TYPE != TOKEN_RPAR) {
+                fprintf(stderr, "Syntax error: Expected comma\n");
+                return;
+            } else if (CRT_TYPE == TOKEN_COMMA) {
+                consume();
+                if (CRT_TYPE == TOKEN_RPAR) {
+                    printf("Warning: Trailing comma\n");
+                }
+            }
     }
 
-    return root_type;
+    consume(); // TOKEN_RPAR
+
+    if (t->function.count < capacity) {
+        REALLOC(t->function.params, t->function.count * sizeof(Declarator*));
+    }
+
+    return;
+}
+
+Declarator *parse_declarator() {
+    Declarator *decl = malloc(sizeof(Declarator));
+    decl->type = malloc(sizeof(Type));
+    Type *root_type = decl->type;
+
+    Type *t = parse_type();
+    Type *head = t;
+    Type tail = *t;
+
+    t = __parse_pointers(t);
+    memcpy(t, &tail, sizeof(Type));
+
+    if (CRT_TYPE == TOKEN_LPAR) {
+        // function pointer
+        consume(); // TOKEN_LPAR
+
+        Type *pointers = malloc(sizeof(Type));
+        Type *pointers_root = pointers; 
+        pointers = __parse_pointers(pointers);
+
+        expect(TOKEN_IDENT); // pointer name
+        decl->ident = strdup(CRT_TEXT);
+        consume();
+
+        decl->type = __parse_arrays(decl->type, true);
+        expect_and_consume(TOKEN_RPAR);
+
+        memcpy(decl->type, pointers_root, sizeof(Type));
+
+        decl->type = pointers;
+        decl->type->type = TYPE_FUNCTION;
+        decl->type->function.return_type = head;
+
+        parse_function_args(decl->type, false);
+
+        decl->type = root_type;
+        return decl;
+    }
+
+    expect(TOKEN_IDENT);
+    decl->ident = strdup(CRT_TEXT);
+    consume();
+
+    if (CRT_TYPE == TOKEN_LPAR) {
+        // function declaration
+        decl->type->type = TYPE_FUNCTION;
+        decl->type->function.return_type = head;
+
+        parse_function_args(decl->type, true);
+
+        decl->type = root_type;
+        return decl;
+    }
+
+    // anything else
+    Type *temp = decl->type;
+    decl->type = __parse_arrays(decl->type, true);
+
+    if (decl->type != temp) { // __parse_arrays changed the pointer, therefore there is an array
+        decl->type->array.memb_type = head;
+    } else {
+        decl->type = head;
+    }
+
+    decl->type = root_type;
+    return decl;
 }
 
 uint32_t sizeof_type(Type *t) {
@@ -284,7 +456,7 @@ uint32_t sizeof_type(Type *t) {
         case TYPE_STRUCT: {
             uint32_t ret = 0;
             for (int i = 0; i < t->structure.count; i++) {
-                ret += sizeof_type(t->structure.memb_types[i]);
+                ret += sizeof_type(t->structure.members[i]->type);
             }
 
             return ret;
@@ -502,8 +674,6 @@ AST_node *__parse_dereference_or_address_of() {
     ret->as.unary_op.op = (CRT_TYPE == TOKEN_AND) ? OP_ADDRESS_OF : OP_DEREFERENCE;
     ret->as.unary_op.prefix = true;
 
-    printf("__parse_dereference_or_address_of:");
-    print_token(CRT_TYPE);
     consume();
     ret->as.unary_op.operand = parse_postfix_expression();
 
@@ -536,6 +706,7 @@ AST_node *parse_factor() {
     } else if (CRT_TYPE == TOKEN_LPAR) { // type cast
         consume();
         Type *t = parse_type();
+        t = __parse_pointers(t);
         
         expect_and_consume(TOKEN_RPAR);
         AST_node *ret = malloc(sizeof(AST_node));
@@ -549,76 +720,6 @@ AST_node *parse_factor() {
     }
 
     return parse_postfix_expression();
-}
-
-// this function assumes the type has already been parsed
-AST_node *__parse_function_decl_internal(Type *t) {
-    AST_node *node = malloc(sizeof(AST_node));
-    node->type = AST_FUNCTION_DECL;
-    node->as.function_decl.type = t;
-
-    expect(TOKEN_IDENT);
-    node->as.function_decl.name = strdup(CRT_TEXT);
-    consume();
-
-    expect_and_consume(TOKEN_LPAR);
-    
-    int argc = 0;
-    int argv_max = 8;
-    AST_node **argv = (AST_node **) calloc(argv_max, sizeof(AST_node*));
-    while (CRT_TYPE != TOKEN_RPAR) {
-        if (IS_CRT_TYPE) {
-            if (argc == argv_max) {
-                argv_max += 2;
-                REALLOC(argv, argv_max * sizeof(AST_node*));
-            }
-
-            argv[argc] = (AST_node *) malloc(sizeof(AST_node));
-
-            argv[argc]->type = AST_VAR_DECL;
-            argv[argc]->as.var_decl.type = parse_type();
-            argv[argc]->as.var_decl.init = NULL;
-
-            expect(TOKEN_IDENT);
-            argv[argc]->as.var_decl.name = strdup(CRT_TEXT);
-            consume(); // TOKEN_IDENT
-
-            argc++;
-            if (CRT_TYPE != TOKEN_RPAR && CRT_TYPE != TOKEN_COMMA) {
-                perror("Syntax error\n");
-                return NULL;
-            }
-
-            if (CRT_TYPE == TOKEN_COMMA) {
-                consume(); // TOKEN_COMMA
-                if (CRT_TYPE == TOKEN_RPAR) {
-                    printf("Warning: trailing comma\n");
-                }
-            }
-        } else {
-            perror("Syntax error\n");
-            return NULL;
-        }
-    }
-
-    if (argc < argv_max && argc > 0) {
-        REALLOC(argv, argc * sizeof(AST_node*));
-    } else if (argc == 0) {
-        free(argv);
-        argv = NULL;
-    }
-
-    consume(); // TOKEN_RPAR
-
-    node->as.function_decl.args = argv;
-    node->as.function_decl.count = argc;
-    node->as.function_decl.body = parse_block();
-
-    return node;
-}
-
-AST_node *parse_function_decl() {
-    return __parse_function_decl_internal(parse_type());
 }
 
 AST_node **parse_call_args(int *argc) {
@@ -658,7 +759,6 @@ AST_node **parse_call_args(int *argc) {
 AST_node *parse_postfix_expression() {
     AST_node *node = parse_primary();
 
-    print_token(CRT_TYPE);
     while (1) {
         if (CRT_TYPE == TOKEN_LPAR) { // function call
             AST_node *call_node = malloc(sizeof(AST_node));
@@ -777,32 +877,6 @@ AST_node *parse_for() {
     return node;
 }
 
-AST_node *__parse_decl_internal(Type *t, bool is_struct) {
-    AST_node *node = malloc(sizeof(AST_node));
-    node->type = AST_VAR_DECL;
-    node->as.var_decl.type = t;
-    node->as.var_decl.name = strdup(CRT_TEXT);
-    
-    consume(); // TOKEN_IDENT
-
-    if (CRT_TYPE == TOKEN_ASSIGN) {
-        if (is_struct) {
-            fprintf(stderr, "Syntax error: Assignments are not allowed inside a struct\n");
-            free(node->as.var_decl.name);
-            free(node);
-
-            return NULL;
-        }
-
-        consume();
-        node->as.var_decl.init = parse_logical_expression();
-    } else {
-        node->as.var_decl.init = NULL;
-    }
-
-    return node;
-}
-
 Type *__deep_copy_type(Type *t) {
     if (t == NULL) return NULL;
 
@@ -824,10 +898,11 @@ Type *__deep_copy_type(Type *t) {
         case TYPE_FUNCTION: {
             ret->function.count = t->function.count;
             ret->function.return_type = __deep_copy_type(t->function.return_type);
-            ret->function.params = calloc(t->function.count, sizeof(Type*));
+            ret->function.params = calloc(t->function.count, sizeof(Declarator*));
 
             for (int i = 0; i < t->function.count; i++) {
-                ret->function.params[i] = __deep_copy_type(t->function.params[i]);
+                ret->function.params[i]->type = __deep_copy_type(t->function.params[i]->type);
+                ret->function.params[i]->ident = strdup(t->function.params[i]->ident);
             }
             break;
         }
@@ -841,12 +916,11 @@ Type *__deep_copy_type(Type *t) {
         case TYPE_STRUCT: {
             ret->structure.count = t->structure.count;
             ret->structure.name = strdup(t->structure.name);
-            ret->structure.memb_names = calloc(t->structure.count, sizeof(char*));
-            ret->structure.memb_types = calloc(t->structure.count, sizeof(Type*));
+            ret->structure.members = calloc(t->structure.count, sizeof(Declarator*)); 
 
             for (int i = 0; i < t->structure.count; i++) {
-                ret->structure.memb_names[i] = strdup(t->structure.memb_names[i]);
-                ret->structure.memb_types[i] = __deep_copy_type(t->structure.memb_types[i]);
+                ret->structure.members[i]->type = __deep_copy_type(t->structure.members[i]->type);
+                ret->structure.members[i]->ident = strdup(t->structure.members[i]->ident);
             }
             break;
         }
@@ -873,9 +947,11 @@ AST_node *__deep_copy_node(AST_node *node) {
         }
 
         case AST_VAR_DECL: {
+            ret->as.var_decl.decl = malloc(sizeof(Declarator));
+
+            ret->as.var_decl.decl->type = __deep_copy_type(node->as.var_decl.decl->type);
+            ret->as.var_decl.decl->ident = strdup(node->as.var_decl.decl->ident);
             ret->as.var_decl.init = __deep_copy_node(node->as.var_decl.init);
-            ret->as.var_decl.name = strdup(node->as.var_decl.name);
-            ret->as.var_decl.type = __deep_copy_type(node->as.var_decl.type);
             break;
         }
 
@@ -913,15 +989,10 @@ AST_node *__deep_copy_node(AST_node *node) {
         }
 
         case AST_FUNCTION_DECL: {
-            ret->as.function_decl.count = node->as.function_decl.count;
-            ret->as.function_decl.name = strdup(node->as.function_decl.name);
-            ret->as.function_decl.type = __deep_copy_type(node->as.function_decl.type);
+            ret->as.function_decl.decl = malloc(sizeof(Declarator));
+            ret->as.function_decl.decl->type = __deep_copy_type(node->as.function_decl.decl->type);
+            ret->as.function_decl.decl->ident = strdup(node->as.function_decl.decl->ident);
             ret->as.function_decl.body = __deep_copy_node(node->as.function_decl.body);
-            ret->as.function_decl.args = calloc(node->as.function_call.count, sizeof(AST_node*));
-
-            for (int i = 0; i < node->as.function_decl.count; i++) {
-                ret->as.function_decl.args[i] = __deep_copy_node(node->as.function_decl.args[i]);
-            }
             break;
         }
 
@@ -939,10 +1010,11 @@ AST_node *__deep_copy_node(AST_node *node) {
         case AST_STRUCT_DECL: {
             ret->as.struct_decl.count = node->as.struct_decl.count;
             ret->as.struct_decl.name = strdup(node->as.struct_decl.name);
-            ret->as.struct_decl.memb_decl = calloc(node->as.struct_decl.count, sizeof(AST_node*));
+            ret->as.struct_decl.members = calloc(node->as.struct_decl.count, sizeof(Declarator*));
 
             for (int i = 0; i < node->as.struct_decl.count; i++) {
-                ret->as.struct_decl.memb_decl[i] = __deep_copy_node(node->as.struct_decl.memb_decl[i]);
+                ret->as.struct_decl.members[i]->ident = strdup(node->as.struct_decl.members[i]->ident);
+                ret->as.struct_decl.members[i]->type = __deep_copy_type(node->as.struct_decl.members[i]->type);
             }
             break;
         }
@@ -1009,6 +1081,29 @@ AST_node *__parse_assignment(AST_node *left) {
     return node;
 }
 
+AST_node *parse_declaration(Declarator *decl) {
+    AST_node *node = malloc(sizeof(AST_node));
+
+    if (decl->type->type == TYPE_FUNCTION) {
+        node->type = AST_FUNCTION_DECL;
+        node->as.function_decl.decl = decl;
+        node->as.function_decl.body = parse_block();
+
+        return node;
+    }
+
+    // variable declaration
+    node->type = AST_VAR_DECL;
+    node->as.var_decl.decl = decl;
+    node->as.var_decl.init = NULL;
+    if (CRT_TYPE == TOKEN_ASSIGN) {
+        consume();
+        node->as.var_decl.init = parse_logical_expression();
+    }
+
+    return node;
+}
+
 AST_node *parse_statement(bool expect_semicolon) {
     AST_node *node = NULL;
 
@@ -1017,14 +1112,8 @@ AST_node *parse_statement(bool expect_semicolon) {
         case TOKEN_VOID:
         case TOKEN_INT:
         case TOKEN_CHAR: {
-            Type *t = parse_type(); // both cases start with a type declaration
-            expect(TOKEN_IDENT);
-            
-            if (OFFSET_CRT_TYPE(1) == TOKEN_ASSIGN || OFFSET_CRT_TYPE(1) == TOKEN_SEMICOLON) {
-                node = __parse_decl_internal(t, false);
-            } else if (OFFSET_CRT_TYPE(1) == TOKEN_LPAR) {
-                node = __parse_function_decl_internal(t);
-            }
+            Declarator *decl = parse_declarator();
+            node = parse_declaration(decl);
 
             break;
         }
@@ -1143,22 +1232,24 @@ AST_node *parse_statement(bool expect_semicolon) {
                 consume(); // TOKEN_IDENT
                 consume(); // TOKEN_LBRACE
 
+                char *identifier = NULL;
+
                 int capacity = 8;
                 int count = 0;
-                node->as.struct_decl.memb_decl = (AST_node **) calloc(capacity, sizeof(AST_node*));
+                node->as.struct_decl.members = (Declarator **) calloc(capacity, sizeof(Declarator*));
                 while (CRT_TYPE != TOKEN_RBRACE) {
                     if (count == capacity) {
                         capacity += 2;
-                        REALLOC(node->as.struct_decl.memb_decl, capacity * sizeof(AST_node*));
+                        REALLOC(node->as.struct_decl.members, capacity * sizeof(Declarator*));
                     }
 
-                    Type *t = parse_type();
-                    node->as.struct_decl.memb_decl[count++] = __parse_decl_internal(t, true);
+                    node->as.struct_decl.members[count++] = parse_declarator();
+
                     expect_and_consume(TOKEN_SEMICOLON);
                 }
 
                 if (count < capacity) {
-                    REALLOC(node->as.struct_decl.memb_decl, count * sizeof(AST_node*));
+                    REALLOC(node->as.struct_decl.members, count * sizeof(Declarator*));
                 }
 
                 consume(); // TOKEN_RBRACE
@@ -1186,7 +1277,8 @@ AST_node *parse_statement(bool expect_semicolon) {
                     Instead, whenever a variable is declared with a struct type, its type in the AST, will contain
                     the referenced struct name, but memb_types = memb_names = NULL and count = 0.
                 */
-                node = __parse_decl_internal(parse_type(), false);
+                Declarator *decl = parse_declarator();
+                node = parse_declaration(decl);
                 break;
             }
         }
@@ -1437,7 +1529,12 @@ void print_type(Type *t, int d) {
                 __print_tabs(d);
                 printf("ARG_TYPES(count=%d)\n", t->function.count);
                 for (int i = 0; i < t->function.count; i++) {
-                    print_type(t->function.params[i], d+1);
+                    __print_tabs(d);
+                    printf("ARG %d\n", i);
+
+                    __print_tabs(d+1);
+                    printf("ident: %s\n", t->function.params[i]->ident);
+                    print_type(t->function.params[i]->type, d+1);
                 }
             }
 
@@ -1466,8 +1563,8 @@ void print_type(Type *t, int d) {
                 printf("MEMBER %d\n", i);
 
                 __print_tabs(d+1);
-                printf("name: %s\n", t->structure.memb_names[i]);
-                print_type(t->structure.memb_types[i], d+1);
+                printf("name: %s\n", t->structure.members[i]->ident);
+                print_type(t->structure.members[i]->type, d+1);
             }
 
             break;
@@ -1509,11 +1606,11 @@ void print_child(AST_node *node) {
             printf("VAR_DECL\n");
 
             __print_tabs(++depth);
-            printf("name: %s\n", node->as.var_decl.name);
+            printf("name: %s\n", node->as.var_decl.decl->ident);
 
             __print_tabs(depth++);
             printf("TYPE (VAR_DECL)\n");
-            print_type(node->as.var_decl.type, depth);
+            print_type(node->as.var_decl.decl->type, depth);
 
             __print_tabs(depth-1);
             printf("INIT (VAR_DECL)\n");
@@ -1641,24 +1738,24 @@ void print_child(AST_node *node) {
             printf("FUNCTION_DECL\n");
 
             __print_tabs(++depth);
-            printf("name: %s\n", node->as.function_decl.name);
+            printf("name: %s\n", node->as.function_decl.decl->ident);
 
             __print_tabs(depth);
-            printf("RETURN_TYPE (FUNCTION_DECL)\n");
+            printf("TYPE (FUNCTION_DECL)\n");
 
             depth++;
-            print_type(node->as.function_decl.type, depth);
+            print_type(node->as.function_decl.decl->type, depth);
 
-            __print_tabs(depth-1);
+            // __print_tabs(depth-1);
 
-            if (node->as.function_decl.count > 0) {
-                printf("ARGS (FUNCTION_DECL, count=%d)\n", node->as.function_decl.count);
-                for (int i = 0; i < node->as.function_decl.count; i++) {
-                    print_child(node->as.function_decl.args[i]);
-                }
-            } else {
-                printf("ARGS (FUNCTION_DECL): none\n");
-            }
+            // if (node->as.function_decl.count > 0) {
+            //     printf("ARGS (FUNCTION_DECL, count=%d)\n", node->as.function_decl.count);
+            //     for (int i = 0; i < node->as.function_decl.count; i++) {
+            //         print_child(node->as.function_decl.args[i]);
+            //     }
+            // } else {
+            //     printf("ARGS (FUNCTION_DECL): none\n");
+            // }
 
             __print_tabs(depth-1);
             printf("BODY (FUNCTION_DECL)\n");
@@ -1713,7 +1810,12 @@ void print_child(AST_node *node) {
             __print_tabs(depth++);
             printf("STRUCT MEMBERS (STRUCT_DECL)\n");
             for (int i = 0; i < node->as.struct_decl.count; i++){
-                print_child(node->as.struct_decl.memb_decl[i]);
+                __print_tabs(depth-1);
+                printf("MEMBER %d (STRUCT_DECL)\n", i);
+                __print_tabs(depth-1);
+                printf("name: %s\n", node->as.struct_decl.members[i]->ident);
+
+                print_type(node->as.struct_decl.members[i]->type, depth);
             }
 
             depth -= 2;
@@ -1819,9 +1921,15 @@ void free_type(Type *t) {
 
         case TYPE_FUNCTION: {
             for (int i = 0; i < t->function.count; i++) {
-                free_type(t->function.params[i]);
+                free_type(t->function.params[i]->type);
+                if (t->function.params[i]->ident != NULL) {
+                    free(t->function.params[i]->ident);
+                }
+
+                free(t->function.params[i]);
             }
 
+            free(t->function.params);
             free_type(t->function.return_type);
             break;
         }
@@ -1832,14 +1940,14 @@ void free_type(Type *t) {
         }
 
         case TYPE_STRUCT: {
-            // will member names be allocated by strdup() ?
             for (int i = 0; i < t->structure.count; i++) {
-                free_type(t->structure.memb_types[i]);
-                free(t->structure.memb_names[i]); // ?
+                free_type(t->structure.members[i]->type);
+                free(t->structure.members[i]->ident);
+                free(t->structure.members[i]);
             }
 
-            free(t->structure.memb_types);
-            free(t->structure.memb_names);
+            free(t->structure.members);
+            free(t->structure.members);
             break;
         }
     }
@@ -1865,9 +1973,10 @@ void free_child(AST_node *node) {
         }
 
         case AST_VAR_DECL: {
-            free_type(node->as.var_decl.type);
+            free_type(node->as.var_decl.decl->type);
             free_child(node->as.var_decl.init);
-            free(node->as.var_decl.name);
+            free(node->as.var_decl.decl->ident);
+            free(node->as.var_decl.decl);
             break;
         }
 
@@ -1909,15 +2018,10 @@ void free_child(AST_node *node) {
         }
 
         case AST_FUNCTION_DECL: {
-            free_type(node->as.function_decl.type);
+            free_type(node->as.function_decl.decl->type);
             free_child(node->as.function_decl.body);
-            free(node->as.function_decl.name);
-
-            for (int i = 0; i < node->as.function_decl.count; i++) {
-                free_child(node->as.function_decl.args[i]);
-            }
-
-            free(node->as.function_decl.args);
+            free(node->as.function_decl.decl->ident);
+            free(node->as.var_decl.decl);
             break;
         }
 
@@ -1933,11 +2037,13 @@ void free_child(AST_node *node) {
 
         case AST_STRUCT_DECL: {
             for (int i = 0; i < node->as.struct_decl.count; i++) {
-                free_child(node->as.struct_decl.memb_decl[i]);
+                free_type(node->as.struct_decl.members[i]->type);
+                free(node->as.struct_decl.members[i]->ident);
+                free(node->as.struct_decl.members[i]);
             }
 
             free(node->as.struct_decl.name);
-            free(node->as.struct_decl.memb_decl);
+            free(node->as.struct_decl.members);
             break;
         }
 
