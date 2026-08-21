@@ -55,6 +55,9 @@ typedef struct {
     enum tokentype type;
     int val;
     char text[64];
+
+    int line;
+    int column;
 } token_t;
 
 
