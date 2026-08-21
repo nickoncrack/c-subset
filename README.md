@@ -15,7 +15,7 @@ Note: this project is at a very early stage, it is not even close to being compl
 + ~~Add greater/less or equal, not equal tokens~~
 + ~~Add augmented assignment (i.e. x += 2)~~
 + ~~Add prefix/suffix increment and decrement~~
-+ Add else if/else branch parsing ~~and single line branch that does not require braces~~
++ ~~Add else if/else branch parsing and single line branch that does not require braces~~
 + ~~Add for loops, break and continue keywords~~
 + ~~Add struct type parsing and struct member accsess~~
 + ~~Add type casts and sizeof()~~
