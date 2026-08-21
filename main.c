@@ -18,6 +18,8 @@
         if (alpha || digit) break; \
         src++; \
         dst->type = TOKEN_##uc; \
+        dst->line = line; \
+        dst->column = column; \
         free(buff); \
         return cnt+1; \
     }
@@ -29,6 +31,8 @@
         if (*src == c2) { \
             src++; \
             dst->type = TOKEN_##uc2; \
+            dst->line = line; \
+            dst->column = column; \
             free(buff); \
             return cnt + 2; \
         } \
@@ -44,27 +48,36 @@
         if (*src == c2) { \
             src++; \
             dst->type = TOKEN_##uc2; \
+            dst->line = line; \
+            dst->column = column; \
             free(buff); \
             return cnt + 2; \
         } else if (*src == c3) { \
             src++; \
             dst->type = TOKEN_##uc3; \
+            dst->line = line; \
+            dst->column = column; \
             free(buff); \
             return cnt + 2; \
         } \
         dst->type = TOKEN_##uc; \
+        dst->line = line; \
+        dst->column = column; \
         free(buff); \
         return cnt + 1; \
     }
 
 #define PRINT_CASE(c) \
     case c: { \
-        printf(#c "\n"); \
-        break; \
+        return #c; \
     }
 
 #define REALLOC(mem, size) mem = realloc(mem, size)
 
+
+int line = 1;
+int column = 1;
+char *filename;
 
 int get_next_token(char *src, token_t *dst) {
     char *buff = calloc(64, 1);
@@ -74,6 +87,13 @@ int get_next_token(char *src, token_t *dst) {
     int cnt = 0;
 
     while (1) {
+        if (*src == '\n') {
+            line++;
+            column = 1;
+        } else {
+            column++;
+        }
+
         if (isalpha(*src) || *src == '_') {
             if (digit) break;
 
@@ -181,7 +201,7 @@ uint32_t tokenize(char *p, token_t *dst) {
 */
 
 
-void print_token(enum tokentype token);
+const char *token_to_string(enum tokentype token);
 
 char program[4096];
 token_t *arr;
@@ -189,6 +209,8 @@ token_t *arr;
 #define CRT_TYPE            get_current_token().type
 #define CRT_VAL             get_current_token().val
 #define CRT_TEXT            get_current_token().text
+#define CRT_LINE            get_current_token().line
+#define CRT_COLUMN          get_current_token().column
 #define OFFSET_CRT_TYPE(n)  (*(arr + n)).type
 
 #define IS_CRT_TYPE         ((CRT_TYPE == TOKEN_VOID) || (CRT_TYPE == TOKEN_INT) || (CRT_TYPE == TOKEN_CHAR))
@@ -198,16 +220,19 @@ token_t get_current_token() {
 }
 
 void consume() {
-    printf("DEBUG: Consuming ");
-    print_token(CRT_TYPE);
+    printf("DEBUG: Consuming %s\n", token_to_string(CRT_TYPE));
     arr++;
     return;
 }
 
 void expect(enum tokentype token) {
     if ((*arr).type != token) {
-        printf("Syntax error: Expected ");
-        print_token(token);
+        printf(
+            "%s:%d:%d: Syntax error: Expected %s, got %s\n",
+            filename, CRT_LINE, CRT_COLUMN,
+            token_to_string(token),
+            token_to_string(CRT_TYPE)
+        );
     }
 
     return;
@@ -313,7 +338,10 @@ void parse_function_args(Type *t, bool require_arg_identifiers) {
                 t->function.params[t->function.count]->type
             );
 
-            // simple assignment causes a segfault
+            /*
+                type is destroyed when returning from this function so a simple assignment
+                causes a segmentation fault
+            */
             memcpy(t->function.params[t->function.count]->type, type, sizeof(Type));
             
             if (CRT_TYPE == TOKEN_IDENT) consume(); // ignore identifiers on function pointers
@@ -418,11 +446,7 @@ Declarator *parse_declarator() {
     Type *temp = decl->type;
     decl->type = __parse_arrays(decl->type, true);
 
-    if (decl->type != temp) { // __parse_arrays changed the pointer, therefore there is an array
-        decl->type->array.memb_type = head;
-    } else {
-        decl->type = head;
-    }
+    memcpy(decl->type, head, sizeof(Type));
 
     decl->type = root_type;
     return decl;
@@ -675,7 +699,7 @@ AST_node *__parse_dereference_or_address_of() {
     ret->as.unary_op.prefix = true;
 
     consume();
-    ret->as.unary_op.operand = parse_postfix_expression();
+    ret->as.unary_op.operand_ast = parse_postfix_expression();
 
     return ret;
 }
@@ -689,30 +713,44 @@ AST_node *parse_factor() {
         ret->as.unary_op.op = (CRT_TYPE == TOKEN_NOT) ? OP_NOT : OP_LOGICAL_NOT;
 
         consume();
-        ret->as.unary_op.operand = parse_factor(); // allows stuff like ~~x or !!x
+        ret->as.unary_op.operand_ast = parse_factor(); // allows stuff like ~~x or !!x
         return ret;
     } else if (CRT_TYPE == TOKEN_SIZEOF) {
         consume();
         expect_and_consume(TOKEN_LPAR);
 
         AST_node *ret = malloc(sizeof(AST_node));
-        ret->type = AST_UNARY_OP;
-        ret->as.unary_op.op = OP_SIZEOF;
-        ret->as.unary_op.prefix = true;
-        ret->as.unary_op.operand = parse_primary();
+        ret->type = AST_SIZEOF;
+
+        if (IS_CRT_TYPE || CRT_TYPE == TOKEN_STRUCT) {
+            ret->as.sizeof_.is_type = true;
+            ret->as.sizeof_.operand_type = parse_type();
+        }   
+        else {
+            ret->as.sizeof_.is_type = false;
+            ret->as.sizeof_.operand_ast = parse_primary();
+        }
 
         expect_and_consume(TOKEN_RPAR);
         return ret;
-    } else if (CRT_TYPE == TOKEN_LPAR) { // type cast
+    } else if (CRT_TYPE == TOKEN_LPAR) {
         consume();
-        Type *t = parse_type();
-        t = __parse_pointers(t);
-        
-        expect_and_consume(TOKEN_RPAR);
-        AST_node *ret = malloc(sizeof(AST_node));
-        ret->type = AST_TYPE_CAST;
-        ret->as.type_cast.type = t;
-        ret->as.type_cast.operand = parse_factor(); // (char) sizeof(uint32_t) is valid for example
+        AST_node *ret;
+
+        // type cast
+        if (IS_CRT_TYPE || CRT_TYPE == TOKEN_STRUCT) {
+            Type *t = parse_type();
+            t = __parse_pointers(t);
+            expect_and_consume(TOKEN_RPAR);
+            
+            ret = malloc(sizeof(AST_node));
+            ret->type = AST_TYPE_CAST;
+            ret->as.type_cast.type = t;
+            ret->as.type_cast.operand = parse_factor(); // (char) sizeof(uint32_t) is valid for example
+        } else {
+            ret = parse_logical_expression();
+            expect_and_consume(TOKEN_RPAR);
+        }
 
         return ret;
     } else if (CRT_TYPE == TOKEN_STAR || CRT_TYPE == TOKEN_AND) {
@@ -797,7 +835,7 @@ AST_node *parse_postfix_expression() {
             op->type = AST_UNARY_OP;
             op->as.unary_op.op = (enum unary_operator) (CRT_TYPE - TOKEN_INCREMENT);
             op->as.unary_op.prefix = false;
-            op->as.unary_op.operand = node;
+            op->as.unary_op.operand_ast = node;
 
             consume();
             node = op;
@@ -808,26 +846,6 @@ AST_node *parse_postfix_expression() {
 
     return node;
 }
-
-
-// AST_node *parse_if_statement() {
-//     consume();
-//     expect_and_consume(TOKEN_LPAR);
-
-//     AST_node *node = malloc(sizeof(AST_node));
-//     node->type = AST_IF;
-//     node->as.if_statement.condition = parse_logical_expression();
-//     expect_and_consume(TOKEN_RPAR);
-
-//     if (CRT_TYPE != TOKEN_LBRACE) {
-//         node->as.if_statement.body = parse_statement(false);
-//     } else {
-//         node->as.if_statement.body = parse_block();
-//     }
-
-//     node->as.if_statement.else_branch = NULL;
-//     return node;
-// }
 
 AST_node *parse_if_statement() {
     consume(); // TOKEN_IF
@@ -841,7 +859,17 @@ AST_node *parse_if_statement() {
     expect_and_consume(TOKEN_RPAR);
 
     if (CRT_TYPE != TOKEN_LBRACE) {
-        node->as.if_statement.blocks[0] = parse_statement(true);
+        node->as.if_statement.blocks[0] = parse_statement(false);
+
+        /*
+            If the if statement is a standalone statement (has no other branches), then the semicolon
+            at the end of the line will be consumed by the caller of this function. If not, the semicolon
+            has to be consumed now.
+        */
+        expect(TOKEN_SEMICOLON);
+        if (OFFSET_CRT_TYPE(1) == TOKEN_ELSE) {
+            consume(); // TOKEN_SEMICOLON
+        }
     } else {
         node->as.if_statement.blocks[0] = parse_block();
     }
@@ -867,7 +895,8 @@ AST_node *parse_if_statement() {
             expect_and_consume(TOKEN_RPAR);
 
             if (CRT_TYPE != TOKEN_LBRACE) {
-                node->as.if_statement.blocks[node->as.if_statement.count] = parse_statement(true);
+                node->as.if_statement.blocks[node->as.if_statement.count] = parse_statement(false);
+                if (CRT_TYPE == TOKEN_ELSE) expect_and_consume(TOKEN_SEMICOLON);
             } else {
                 node->as.if_statement.blocks[node->as.if_statement.count] = parse_block();
             }
@@ -903,6 +932,7 @@ AST_node *parse_if_statement() {
             if (CRT_TYPE == TOKEN_ELSE) consume();
 
             if (CRT_TYPE != TOKEN_LBRACE) {
+                // semicolon is consumed by caller
                 node->as.if_statement.else_branch = parse_statement(false);
             } else {
                 node->as.if_statement.else_branch = parse_block();
@@ -1051,7 +1081,26 @@ AST_node *__deep_copy_node(AST_node *node) {
         case AST_UNARY_OP: {
             ret->as.unary_op.op = node->as.unary_op.op;
             ret->as.unary_op.prefix = node->as.unary_op.prefix;
-            ret->as.unary_op.operand = __deep_copy_node(node->as.unary_op.operand);
+            ret->as.unary_op.operand_type = __deep_copy_type(node->as.unary_op.operand_type);
+            ret->as.unary_op.operand_ast = __deep_copy_node(node->as.unary_op.operand_ast);
+            break;
+        }
+
+        case AST_IF: {
+            ret->as.if_statement.count = node->as.if_statement.count;
+            ret->as.if_statement.blocks = calloc(
+                node->as.if_statement.count, sizeof(AST_node*)
+            );
+            ret->as.if_statement.conditions = calloc(
+                node->as.if_statement.count, sizeof(AST_node*)
+            );
+
+            for (int i = 0; i < node->as.if_statement.count; i++) {
+                ret->as.if_statement.blocks[i] = __deep_copy_node(node->as.if_statement.blocks[i]);
+                ret->as.if_statement.conditions[i] = __deep_copy_node(node->as.if_statement.conditions[i]);
+            }
+
+            ret->as.if_statement.else_branch = __deep_copy_node(node->as.if_statement.else_branch);
             break;
         }
 
@@ -1122,6 +1171,25 @@ AST_node *__deep_copy_node(AST_node *node) {
             ret->as.type_cast.type = __deep_copy_type(node->as.type_cast.type);
             ret->as.type_cast.operand = __deep_copy_node(node->as.type_cast.operand);
             break;
+        }
+
+        case AST_SIZEOF: {
+            ret->as.sizeof_.is_type = node->as.sizeof_.is_type;
+            if (node->as.sizeof_.is_type) {
+                ret->as.sizeof_.operand_type = __deep_copy_type(node->as.sizeof_.operand_type);
+            } else {
+                ret->as.sizeof_.operand_ast = __deep_copy_node(node->as.sizeof_.operand_ast);
+            }
+            break;
+        }
+
+        case AST_BREAK:
+        case AST_CONTINUE: {
+            break;
+        }
+
+        default: {
+            printf("Error: Unexpected argument in __deep_copy_node()\n");
         }
     }
 
@@ -1281,7 +1349,7 @@ AST_node *parse_statement(bool expect_semicolon) {
             var_ref->type = AST_VAR_REF;
             var_ref->as.var_ref.name = strdup(CRT_TEXT);
 
-            node->as.unary_op.operand = var_ref;
+            node->as.unary_op.operand_ast = var_ref;
             consume(); // TOKEN_IDENT
             break;
         }
@@ -1307,6 +1375,7 @@ AST_node *parse_statement(bool expect_semicolon) {
                 then its a struct declaration: struct s { ... }
             */
 
+            // struct declaration
             if (OFFSET_CRT_TYPE(2) == TOKEN_LBRACE) {
                 node = malloc(sizeof(AST_node));
                 node->type = AST_STRUCT_DECL;
@@ -1395,8 +1464,7 @@ AST_node *parse_statement(bool expect_semicolon) {
         case TOKEN_COMMA:
         case TOKEN_MEMB_ACCESS:
         case TOKEN_PTR_MEMB_ACCESS: {
-            printf("Syntax error: Unexpected token ");
-            print_token(CRT_TYPE);
+            printf("Syntax error: Unexpected token %s", token_to_string(CRT_TYPE));
             break;
         }
 
@@ -1489,7 +1557,7 @@ void __print_tabs(int depth) {
     return;
 }
 
-void print_token(enum tokentype token) {
+const char *token_to_string(enum tokentype token) {
     switch (token) {
         PRINT_CASE(TOKEN_VOID);
         PRINT_CASE(TOKEN_INT);
@@ -1540,7 +1608,7 @@ void print_token(enum tokentype token) {
     }
 }
 
-void print_binary_operator(enum binop_operator op) {
+const char *binary_op_to_string(enum binop_operator op) {
     switch (op) {
         PRINT_CASE(OP_ADD);
         PRINT_CASE(OP_SUB);
@@ -1562,7 +1630,7 @@ void print_binary_operator(enum binop_operator op) {
     }
 }
 
-void print_unary_operator(enum unary_operator op) {
+const char *unary_op_to_string(enum unary_operator op) {
     switch (op) {
         PRINT_CASE(OP_INCREMENT);
         PRINT_CASE(OP_DECREMENT);
@@ -1574,7 +1642,7 @@ void print_unary_operator(enum unary_operator op) {
     }
 }
 
-void print_data_type(enum data_type type) {
+const char *data_type_to_string(enum data_type type) {
     switch (type) {
         PRINT_CASE(TYPE_VOID);
         PRINT_CASE(TYPE_INT);
@@ -1588,8 +1656,7 @@ void print_data_type(enum data_type type) {
 
 void print_type(Type *t, int d) {
     __print_tabs(d);
-    printf("type: ");
-    print_data_type(t->type);
+    printf("type: %s\n", data_type_to_string(t->type));
 
     switch (t->type) {
         case TYPE_VOID:
@@ -1645,12 +1712,12 @@ void print_type(Type *t, int d) {
             __print_tabs(d);
             printf("STRUCT_MEMBERS(count=%d)\n", t->structure.count);
             for (int i = 0; i < t->structure.count; i++) {
-                __print_tabs(d);
+                __print_tabs(d+1);
                 printf("MEMBER %d\n", i);
 
                 __print_tabs(d+1);
                 printf("name: %s\n", t->structure.members[i]->ident);
-                print_type(t->structure.members[i]->type, d+1);
+                print_type(t->structure.members[i]->type, d+2);
             }
 
             break;
@@ -1710,8 +1777,7 @@ void print_child(AST_node *node) {
             __print_tabs(depth);
             printf("BINARY_OP\n");
             __print_tabs(++depth);
-            printf("operator: ");
-            print_binary_operator(node->as.binary_op.op);
+            printf("operator: %s\n", binary_op_to_string(node->as.binary_op.op));
             
             __print_tabs(depth++);
             printf("LEFT (BINARY_OP)\n");
@@ -1729,15 +1795,19 @@ void print_child(AST_node *node) {
             __print_tabs(depth);
             printf("UNARY_OP\n");
             __print_tabs(++depth);
-            printf("operator: ");
-            print_unary_operator(node->as.unary_op.op);
+            printf("operator: %s\n", unary_op_to_string(node->as.unary_op.op));
 
             __print_tabs(depth);
             printf("prefix: %s\n", node->as.unary_op.prefix ? "true" : "false");
 
             __print_tabs(depth++);
             printf("OPERAND (UNARY_OP)\n");
-            print_child(node->as.unary_op.operand);
+
+            if (node->as.unary_op.op != OP_SIZEOF) {
+                print_child(node->as.unary_op.operand_ast);
+            } else {
+                print_type(node->as.unary_op.operand_type, depth);
+            }
 
             depth -= 2;
             break;
@@ -1889,7 +1959,7 @@ void print_child(AST_node *node) {
             for (int i = 0; i < node->as.struct_decl.count; i++){
                 __print_tabs(depth-1);
                 printf("MEMBER %d (STRUCT_DECL)\n", i);
-                __print_tabs(depth-1);
+                __print_tabs(depth);
                 printf("name: %s\n", node->as.struct_decl.members[i]->ident);
 
                 print_type(node->as.struct_decl.members[i]->type, depth);
@@ -1945,6 +2015,24 @@ void print_child(AST_node *node) {
             __print_tabs(depth++);
             printf("OPERAND (TYPE_CAST)\n");
             print_child(node->as.type_cast.operand);
+
+            depth -= 2;
+            break;
+        }
+
+        case AST_SIZEOF: {
+            __print_tabs(depth);
+            printf("SIZEOF\n");
+
+            __print_tabs(++depth);
+            if (node->as.sizeof_.is_type) {
+                printf("OPERAND TYPE (SIZEOF)\n");
+                print_type(node->as.sizeof_.operand_type, depth+1);
+            } else {
+                printf("OPERAND (SIZEOF)\n");
+                depth++;
+                print_child(node->as.sizeof_.operand_ast);
+            }
 
             depth -= 2;
             break;
@@ -2064,7 +2152,11 @@ void free_child(AST_node *node) {
         }
 
         case AST_UNARY_OP: {
-            free_child(node->as.unary_op.operand);
+            if (node->as.unary_op.op != OP_SIZEOF) {
+                free_child(node->as.unary_op.operand_ast);
+            } else {
+                free_type(node->as.unary_op.operand_type);
+            }
             break;
         }
 
@@ -2147,6 +2239,15 @@ void free_child(AST_node *node) {
             break;
         }
 
+        case AST_SIZEOF: {
+            if (node->as.sizeof_.is_type) {
+                free_type(node->as.sizeof_.operand_type);
+            } else {
+                free_child(node->as.sizeof_.operand_ast);
+            }
+            break;
+        }
+
         case AST_BLOCK: {
             for (int i = 0; i < node->as.block.count; i++) {
                 free_child(node->as.block.statements[i]);
@@ -2176,10 +2277,17 @@ void free_AST(AST_node *program) {
     return;
 }
 
-int main(void) {
-    arr = (token_t *) calloc(128, sizeof(token_t));
+int main(int argc, char *argv[]) {
+    if (argc == 1) {
+        printf("Error: no input files\n");
+        return -1;
+    }
+
+    filename = argv[1];
+
+    arr = (token_t *) calloc(512, sizeof(token_t));
     void *orig_arr_ptr = arr;
-    FILE *f = fopen("program.c", "r");
+    FILE *f = fopen(filename, "r");
     
     fseek(f, 0, SEEK_END);
     uint32_t size = ftell(f);
@@ -2193,10 +2301,10 @@ int main(void) {
     printf("%d tokens parsed\n", tokens);
 
     // for (int i = 0; i < tokens; i++) {
-    //     print_token(arr[i].type);
+    //     printf("%s ", token_to_string(arr[i].type));
     // }
 
-    printf("=========================\n");
+    printf("\n=========================\n");
     AST_node *program = parse_program();
 
     print_AST(program);
