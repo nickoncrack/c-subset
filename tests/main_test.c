@@ -46,7 +46,7 @@ int process(struct Node *node, int index) {
     return node->handler(arr[index], add(x, *ptr));
 }
 
-int main(int argc) {
+int main(int argc, char *argv[]) {
     struct Node node;
     struct Container container;
 
@@ -75,7 +75,7 @@ int main(int argc) {
         x = 0;
     }
 
-    x = (*pp) + (x << 2) | (y >> 1);
+    x = *(*pp) + (x << 2) | (y >> 1);
     x &= 255;
     x |= 1;
     x ^= 2;
