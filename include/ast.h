@@ -22,6 +22,7 @@ enum AST_node_type {
     AST_STRUCT_ACCESS,
     AST_ARRAY_ACCESS,
     AST_TYPE_CAST,
+    AST_SIZEOF,
     AST_BLOCK,
     AST_PROGRAM
 };
@@ -132,7 +133,10 @@ typedef struct AST_node {
             enum unary_operator op;
             bool prefix; // true if the operator is placed before the operand (i.e. ++x) 
 
-            struct AST_node *operand;
+            union {
+                struct AST_node *operand_ast;
+                Type *operand_type;
+            };
         } unary_op;
 
         struct {
@@ -191,6 +195,14 @@ typedef struct AST_node {
             Type *type;
             struct AST_node *operand;
         } type_cast;
+
+        struct {
+            bool is_type;
+            union {
+                Type *operand_type;
+                struct AST_node *operand_ast;
+            };
+        } sizeof_;
 
         struct {
             struct AST_node **statements;
