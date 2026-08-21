@@ -810,22 +810,108 @@ AST_node *parse_postfix_expression() {
 }
 
 
+// AST_node *parse_if_statement() {
+//     consume();
+//     expect_and_consume(TOKEN_LPAR);
+
+//     AST_node *node = malloc(sizeof(AST_node));
+//     node->type = AST_IF;
+//     node->as.if_statement.condition = parse_logical_expression();
+//     expect_and_consume(TOKEN_RPAR);
+
+//     if (CRT_TYPE != TOKEN_LBRACE) {
+//         node->as.if_statement.body = parse_statement(false);
+//     } else {
+//         node->as.if_statement.body = parse_block();
+//     }
+
+//     node->as.if_statement.else_branch = NULL;
+//     return node;
+// }
+
 AST_node *parse_if_statement() {
-    consume();
+    consume(); // TOKEN_IF
     expect_and_consume(TOKEN_LPAR);
 
     AST_node *node = malloc(sizeof(AST_node));
     node->type = AST_IF;
-    node->as.if_statement.condition = parse_logical_expression();
+    node->as.if_statement.blocks = calloc(1, sizeof(AST_node*));
+    node->as.if_statement.conditions = calloc(1, sizeof(AST_node*));
+    node->as.if_statement.conditions[0] = parse_logical_expression();
     expect_and_consume(TOKEN_RPAR);
 
     if (CRT_TYPE != TOKEN_LBRACE) {
-        node->as.if_statement.body = parse_statement(false);
+        node->as.if_statement.blocks[0] = parse_statement(true);
     } else {
-        node->as.if_statement.body = parse_block();
+        node->as.if_statement.blocks[0] = parse_block();
     }
 
-    node->as.if_statement.else_branch = NULL;
+    node->as.if_statement.count = 1;
+    if (CRT_TYPE == TOKEN_ELSE) {
+        consume();
+
+        int capacity = 4;
+        REALLOC(node->as.if_statement.blocks, capacity * sizeof(AST_node*));
+        REALLOC(node->as.if_statement.conditions, capacity * sizeof(AST_node*));
+        while (CRT_TYPE == TOKEN_IF) {
+            if (node->as.if_statement.count == capacity) {
+                capacity += 2;
+                REALLOC(node->as.if_statement.blocks, capacity * sizeof(AST_node*));
+                REALLOC(node->as.if_statement.conditions, capacity * sizeof(AST_node*));
+            }
+
+            consume(); // TOKEN_IF
+            expect_and_consume(TOKEN_LPAR);
+
+            node->as.if_statement.conditions[node->as.if_statement.count] = parse_logical_expression();
+            expect_and_consume(TOKEN_RPAR);
+
+            if (CRT_TYPE != TOKEN_LBRACE) {
+                node->as.if_statement.blocks[node->as.if_statement.count] = parse_statement(true);
+            } else {
+                node->as.if_statement.blocks[node->as.if_statement.count] = parse_block();
+            }
+            node->as.if_statement.count++;
+
+            /*
+                we are currently at the start of a new line. The only case it can be another else if statement
+                is if the second token of the line is TOKEN_IF
+            */
+            if (OFFSET_CRT_TYPE(1) == TOKEN_IF) {
+                expect_and_consume(TOKEN_ELSE);
+            }
+        }
+
+        if (node->as.if_statement.count < capacity) {
+            REALLOC(
+                node->as.if_statement.blocks, 
+                node->as.if_statement.count * sizeof(AST_node*)
+            );
+
+            REALLOC(
+                node->as.if_statement.conditions,
+                node->as.if_statement.count * sizeof(AST_node*)
+            );
+        }
+
+        /*
+            The above loop doesn't consume the else token unless the second token is TOKEN_IF.
+            If the above loop wasn't exectued, TOKEN_ELSE has been consumed at the start of this scope
+            but the count = 1 since there are no else if statements
+        */
+        if (CRT_TYPE == TOKEN_ELSE || node->as.if_statement.count == 1) {
+            if (CRT_TYPE == TOKEN_ELSE) consume();
+
+            if (CRT_TYPE != TOKEN_LBRACE) {
+                node->as.if_statement.else_branch = parse_statement(false);
+            } else {
+                node->as.if_statement.else_branch = parse_block();
+            }
+        } else {
+            node->as.if_statement.else_branch = NULL;
+        }
+    }
+
     return node;
 }
 
@@ -1660,15 +1746,17 @@ void print_child(AST_node *node) {
         case AST_IF: {
             __print_tabs(depth);
             printf("IF_STATEMENT\n");
-            
-            __print_tabs(++depth);
-            printf("CONDITION (IF_STATEMENT)\n");
-            depth++;
-            print_child(node->as.if_statement.condition);
 
-            __print_tabs(depth-1);
-            printf("BODY (IF_STATEMENT)\n");
-            print_child(node->as.if_statement.body);
+            depth += 2;
+            for (int i = 0; i < node->as.if_statement.count; i++) {
+                __print_tabs(depth-1);
+                printf("CONDITION %d (IF_STATEMENT)\n", i);
+                print_child(node->as.if_statement.conditions[i]);
+
+                __print_tabs(depth-1);
+                printf("BLOCK %d (IF_STATEMENT)\n", i);
+                print_child(node->as.if_statement.blocks[i]);
+            }
 
             __print_tabs(depth-1);
             printf("ELSE_BRANCH (IF_STATEMENT)\n");
@@ -1745,17 +1833,6 @@ void print_child(AST_node *node) {
 
             depth++;
             print_type(node->as.function_decl.decl->type, depth);
-
-            // __print_tabs(depth-1);
-
-            // if (node->as.function_decl.count > 0) {
-            //     printf("ARGS (FUNCTION_DECL, count=%d)\n", node->as.function_decl.count);
-            //     for (int i = 0; i < node->as.function_decl.count; i++) {
-            //         print_child(node->as.function_decl.args[i]);
-            //     }
-            // } else {
-            //     printf("ARGS (FUNCTION_DECL): none\n");
-            // }
 
             __print_tabs(depth-1);
             printf("BODY (FUNCTION_DECL)\n");
@@ -1992,8 +2069,13 @@ void free_child(AST_node *node) {
         }
 
         case AST_IF: {
-            free_child(node->as.if_statement.condition);
-            free_child(node->as.if_statement.body);
+            for (int i = 0; i < node->as.if_statement.count; i++) {
+                free_child(node->as.if_statement.blocks[i]);
+                free_child(node->as.if_statement.conditions[i]);
+            }
+
+            free(node->as.if_statement.blocks);
+            free(node->as.if_statement.conditions);
             free_child(node->as.if_statement.else_branch);
             break;
         }
