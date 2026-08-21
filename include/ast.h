@@ -92,6 +92,13 @@ typedef struct Type {
     };
 } Type;
 
+/*
+    A declarator struct which contains both a type and identifier
+    makes it significantly easier to parse complex declarations like
+    a function pointer, where the identifier is in between parts of 
+    the declaration (void (*fptr)(int), "fptr", the identifier is in
+    between void and (int), both of which contribute to the declaration)
+*/
 typedef struct Declarator {
     Type *type;
     char *ident;
@@ -129,9 +136,11 @@ typedef struct AST_node {
         } unary_op;
 
         struct {
-            struct AST_node *condition;
-            struct AST_node *body;
+            // index 0 points to the if statement, the rest point to else if statements
+            struct AST_node **conditions;
+            struct AST_node **blocks;
             struct AST_node *else_branch;
+            int count;
         } if_statement;
 
         struct {
