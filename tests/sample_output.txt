@@ -46,7 +46,7 @@ int process(struct Node *node, int index) {
     return node->handler(arr[index], add(x, *ptr));
 }
 
-int main(int argc) {
+int main(int argc, char *argv[]) {
     struct Node node;
     struct Container container;
 
@@ -75,7 +75,7 @@ int main(int argc) {
         x = 0;
     }
 
-    x = (*pp) + (x << 2) | (y >> 1);
+    x = *(*pp) + (x << 2) | (y >> 1);
     x &= 255;
     x |= 1;
     x ^= 2;
@@ -89,7 +89,7 @@ int main(int argc) {
     return (int) sizeof(struct Node) + process(&node, x);
 }
 ========================
-492 tokens parsed
+499 tokens parsed
 =========================
 PROGRAM(count=5)
     STRUCT_DECL (count=3)
@@ -510,10 +510,18 @@ PROGRAM(count=5)
             type: TYPE_FUNCTION
             RETURN_TYPE
                 type: TYPE_INT
-            ARG_TYPES(count=1)
+            ARG_TYPES(count=2)
             ARG 0
                 ident: argc
                 type: TYPE_INT
+            ARG 1
+                ident: argv
+                type: TYPE_ARRAY
+                member count: 0
+                MEMBER_TYPE
+                    type: TYPE_POINTER
+                    POINTEE
+                        type: TYPE_CHAR
         BODY (FUNCTION_DECL)
             BLOCK (count=18)
                 VAR_DECL
@@ -804,8 +812,12 @@ PROGRAM(count=5)
                                             operator: OP_DEREFERENCE
                                             prefix: true
                                             OPERAND (UNARY_OP)
-                                                VAR_REF
-                                                    name: pp
+                                                UNARY_OP
+                                                    operator: OP_DEREFERENCE
+                                                    prefix: true
+                                                    OPERAND (UNARY_OP)
+                                                        VAR_REF
+                                                            name: pp
                                     RIGHT (BINARY_OP)
                                         BINARY_OP
                                             operator: OP_LSH
