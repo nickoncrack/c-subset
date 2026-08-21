@@ -6,8 +6,10 @@ Note: this project is at a very early stage, it is not even close to being compl
 ## Usage
 ```
 gcc main.c -I./include -o compiler.bin
-./compiler.bin test_program.c
+./compiler.bin tests/main_test.c
 ```
+
+[Sample output](tests/sample_output.txt)
 
 
 ## Todos
