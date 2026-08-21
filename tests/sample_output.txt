@@ -1,0 +1,965 @@
+struct Node {
+    int value;
+    struct Node *next;
+    int (*handler)(int, int);
+};
+
+struct Container {
+    struct Node *nodes[10];
+    int count;
+};
+
+int add(int a, int b) {
+    return a + b;
+}
+
+int process(struct Node *node, int index) {
+    int x = node->value;
+    int *ptr = &x;
+    int arr[5];
+
+    arr[index] = *ptr + 2;
+
+    if (x == 0) {
+        x++;
+    } else if (x > 10) {
+        x -= 2;
+    } else if (x <= 5) {
+        x *= 2;
+    } else {
+        x >>= 2;
+    }
+
+    while (x != 0) {
+        x--;
+
+        if (x == 3) continue;
+        if (x < 0) break;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        arr[i] += x;
+        if (arr[i] >= 20) arr[i] = 0;
+        else if (arr[i] != 5) arr[i]++;
+    }
+
+    return node->handler(arr[index], add(x, *ptr));
+}
+
+int main(int argc) {
+    struct Node node;
+    struct Container container;
+
+    int x = 2;
+    int y = 3;
+    int *p = &x;
+    int **pp = &p;
+
+    node.value = x;
+    node.next = 0;
+    node.handler = add;
+
+    container.nodes[0] = &node;
+    container.count = 1;
+
+    if (container.count > 0) {
+        struct Node *current = container.nodes[0];
+        if (current->next == 0) {
+            current->value += y;
+        } else if (current->value <= 10) {
+            current->value *= 2;
+        } else {
+            current->value >>= 2;
+        }
+    } else {
+        x = 0;
+    }
+
+    x = (*pp) + (x << 2) | (y >> 1);
+    x &= 255;
+    x |= 1;
+    x ^= 2;
+
+    for (int i = 0; i < 10; i++) {
+        container.nodes[i] = 0;
+        if (i == 5) break;
+        else if (i & 1) continue;
+    }
+
+    return (int) sizeof(struct Node) + process(&node, x);
+}
+========================
+492 tokens parsed
+=========================
+PROGRAM(count=5)
+    STRUCT_DECL (count=3)
+        struct name: Node
+        STRUCT MEMBERS (STRUCT_DECL)
+        MEMBER 0 (STRUCT_DECL)
+            name: value
+            type: TYPE_INT
+        MEMBER 1 (STRUCT_DECL)
+            name: next
+            type: TYPE_POINTER
+            POINTEE
+                type: TYPE_STRUCT
+                struct name: Node
+                STRUCT_MEMBERS(count=0)
+        MEMBER 2 (STRUCT_DECL)
+            name: handler
+            type: TYPE_POINTER
+            POINTEE
+                type: TYPE_FUNCTION
+                RETURN_TYPE
+                    type: TYPE_INT
+                ARG_TYPES(count=2)
+                ARG 0
+                    ident: (null)
+                    type: TYPE_INT
+                ARG 1
+                    ident: (null)
+                    type: TYPE_INT
+    STRUCT_DECL (count=2)
+        struct name: Container
+        STRUCT MEMBERS (STRUCT_DECL)
+        MEMBER 0 (STRUCT_DECL)
+            name: nodes
+            type: TYPE_ARRAY
+            member count: 10
+            MEMBER_TYPE
+                type: TYPE_POINTER
+                POINTEE
+                    type: TYPE_STRUCT
+                    struct name: Node
+                    STRUCT_MEMBERS(count=0)
+        MEMBER 1 (STRUCT_DECL)
+            name: count
+            type: TYPE_INT
+    FUNCTION_DECL
+        name: add
+        TYPE (FUNCTION_DECL)
+            type: TYPE_FUNCTION
+            RETURN_TYPE
+                type: TYPE_INT
+            ARG_TYPES(count=2)
+            ARG 0
+                ident: a
+                type: TYPE_INT
+            ARG 1
+                ident: b
+                type: TYPE_INT
+        BODY (FUNCTION_DECL)
+            BLOCK (count=1)
+                RETURN
+                    PARAMETER (RETURN)
+                        BINARY_OP
+                            operator: OP_ADD
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: a
+                            RIGHT (BINARY_OP)
+                                VAR_REF
+                                    name: b
+    FUNCTION_DECL
+        name: process
+        TYPE (FUNCTION_DECL)
+            type: TYPE_FUNCTION
+            RETURN_TYPE
+                type: TYPE_INT
+            ARG_TYPES(count=2)
+            ARG 0
+                ident: node
+                type: TYPE_POINTER
+                POINTEE
+                    type: TYPE_STRUCT
+                    struct name: Node
+                    STRUCT_MEMBERS(count=0)
+            ARG 1
+                ident: index
+                type: TYPE_INT
+        BODY (FUNCTION_DECL)
+            BLOCK (count=8)
+                VAR_DECL
+                    name: x
+                    TYPE (VAR_DECL)
+                        type: TYPE_INT
+                    INIT (VAR_DECL)
+                        STRUCT_ACCESS
+                            struct member: value
+                            pointer: 1
+                            SRC (STRUCT_ACCESS)
+                                VAR_REF
+                                    name: node
+                VAR_DECL
+                    name: ptr
+                    TYPE (VAR_DECL)
+                        type: TYPE_POINTER
+                        POINTEE
+                            type: TYPE_INT
+                    INIT (VAR_DECL)
+                        UNARY_OP
+                            operator: OP_ADDRESS_OF
+                            prefix: true
+                            OPERAND (UNARY_OP)
+                                VAR_REF
+                                    name: x
+                VAR_DECL
+                    name: arr
+                    TYPE (VAR_DECL)
+                        type: TYPE_ARRAY
+                        member count: 5
+                        MEMBER_TYPE
+                            type: TYPE_INT
+                    INIT (VAR_DECL)
+                        not set (null)
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        ARRAY_ACCESS
+                            ARRAY
+                                VAR_REF
+                                    name: arr
+                            INDEX (ARRAY_ACCESS)
+                                VAR_REF
+                                    name: index
+                    RIGHT (BINARY_OP)
+                        BINARY_OP
+                            operator: OP_ADD
+                            LEFT (BINARY_OP)
+                                UNARY_OP
+                                    operator: OP_DEREFERENCE
+                                    prefix: true
+                                    OPERAND (UNARY_OP)
+                                        VAR_REF
+                                            name: ptr
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 2
+                IF_STATEMENT
+                    CONDITION 0 (IF_STATEMENT)
+                        BINARY_OP
+                            operator: OP_EQUAL
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: x
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 0
+                    BLOCK 0 (IF_STATEMENT)
+                        BLOCK (count=1)
+                            UNARY_OP
+                                operator: OP_INCREMENT
+                                prefix: false
+                                OPERAND (UNARY_OP)
+                                    VAR_REF
+                                        name: x
+                    CONDITION 1 (IF_STATEMENT)
+                        BINARY_OP
+                            operator: OP_GREATER
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: x
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 10
+                    BLOCK 1 (IF_STATEMENT)
+                        BLOCK (count=1)
+                            BINARY_OP
+                                operator: OP_ASSIGN
+                                LEFT (BINARY_OP)
+                                    VAR_REF
+                                        name: x
+                                RIGHT (BINARY_OP)
+                                    BINARY_OP
+                                        operator: OP_SUB
+                                        LEFT (BINARY_OP)
+                                            VAR_REF
+                                                name: x
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 2
+                    CONDITION 2 (IF_STATEMENT)
+                        BINARY_OP
+                            operator: OP_LE
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: x
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 5
+                    BLOCK 2 (IF_STATEMENT)
+                        BLOCK (count=1)
+                            BINARY_OP
+                                operator: OP_ASSIGN
+                                LEFT (BINARY_OP)
+                                    VAR_REF
+                                        name: x
+                                RIGHT (BINARY_OP)
+                                    BINARY_OP
+                                        operator: OP_STAR
+                                        LEFT (BINARY_OP)
+                                            VAR_REF
+                                                name: x
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 2
+                    ELSE_BRANCH (IF_STATEMENT)
+                        BLOCK (count=1)
+                            BINARY_OP
+                                operator: OP_ASSIGN
+                                LEFT (BINARY_OP)
+                                    VAR_REF
+                                        name: x
+                                RIGHT (BINARY_OP)
+                                    BINARY_OP
+                                        operator: OP_RSH
+                                        LEFT (BINARY_OP)
+                                            VAR_REF
+                                                name: x
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 2
+                WHILE_STATEMENT
+                    CONDITION (WHILE_STATEMENT)
+                        BINARY_OP
+                            operator: OP_NE
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: x
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 0
+                    BODY (WHILE_STATEMENT)
+                        BLOCK (count=3)
+                            UNARY_OP
+                                operator: OP_DECREMENT
+                                prefix: false
+                                OPERAND (UNARY_OP)
+                                    VAR_REF
+                                        name: x
+                            IF_STATEMENT
+                                CONDITION 0 (IF_STATEMENT)
+                                    BINARY_OP
+                                        operator: OP_EQUAL
+                                        LEFT (BINARY_OP)
+                                            VAR_REF
+                                                name: x
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 3
+                                BLOCK 0 (IF_STATEMENT)
+                                    CONTINUE
+                                ELSE_BRANCH (IF_STATEMENT)
+                                    not set (null)
+                            IF_STATEMENT
+                                CONDITION 0 (IF_STATEMENT)
+                                    BINARY_OP
+                                        operator: OP_LESS
+                                        LEFT (BINARY_OP)
+                                            VAR_REF
+                                                name: x
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 0
+                                BLOCK 0 (IF_STATEMENT)
+                                    BREAK
+                                ELSE_BRANCH (IF_STATEMENT)
+                                    not set (null)
+                FOR_STATEMENT
+                    INIT (FOR_STATEMENT)
+                        VAR_DECL
+                            name: i
+                            TYPE (VAR_DECL)
+                                type: TYPE_INT
+                            INIT (VAR_DECL)
+                                INT_LITERAL
+                                    value: 0
+                    CONDITION (FOR_STATEMENT)
+                        BINARY_OP
+                            operator: OP_LESS
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: i
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 5
+                    UPDATION (FOR_STATEMENT)
+                        UNARY_OP
+                            operator: OP_INCREMENT
+                            prefix: false
+                            OPERAND (UNARY_OP)
+                                VAR_REF
+                                    name: i
+                    BODY (FOR_STATEMENT)
+                        BLOCK (count=2)
+                            BINARY_OP
+                                operator: OP_ASSIGN
+                                LEFT (BINARY_OP)
+                                    ARRAY_ACCESS
+                                        ARRAY
+                                            VAR_REF
+                                                name: arr
+                                        INDEX (ARRAY_ACCESS)
+                                            VAR_REF
+                                                name: i
+                                RIGHT (BINARY_OP)
+                                    BINARY_OP
+                                        operator: OP_ADD
+                                        LEFT (BINARY_OP)
+                                            ARRAY_ACCESS
+                                                ARRAY
+                                                    VAR_REF
+                                                        name: arr
+                                                INDEX (ARRAY_ACCESS)
+                                                    VAR_REF
+                                                        name: i
+                                        RIGHT (BINARY_OP)
+                                            VAR_REF
+                                                name: x
+                            IF_STATEMENT
+                                CONDITION 0 (IF_STATEMENT)
+                                    BINARY_OP
+                                        operator: OP_GE
+                                        LEFT (BINARY_OP)
+                                            ARRAY_ACCESS
+                                                ARRAY
+                                                    VAR_REF
+                                                        name: arr
+                                                INDEX (ARRAY_ACCESS)
+                                                    VAR_REF
+                                                        name: i
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 20
+                                BLOCK 0 (IF_STATEMENT)
+                                    BINARY_OP
+                                        operator: OP_ASSIGN
+                                        LEFT (BINARY_OP)
+                                            ARRAY_ACCESS
+                                                ARRAY
+                                                    VAR_REF
+                                                        name: arr
+                                                INDEX (ARRAY_ACCESS)
+                                                    VAR_REF
+                                                        name: i
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 0
+                                CONDITION 1 (IF_STATEMENT)
+                                    BINARY_OP
+                                        operator: OP_NE
+                                        LEFT (BINARY_OP)
+                                            ARRAY_ACCESS
+                                                ARRAY
+                                                    VAR_REF
+                                                        name: arr
+                                                INDEX (ARRAY_ACCESS)
+                                                    VAR_REF
+                                                        name: i
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 5
+                                BLOCK 1 (IF_STATEMENT)
+                                    UNARY_OP
+                                        operator: OP_INCREMENT
+                                        prefix: false
+                                        OPERAND (UNARY_OP)
+                                            ARRAY_ACCESS
+                                                ARRAY
+                                                    VAR_REF
+                                                        name: arr
+                                                INDEX (ARRAY_ACCESS)
+                                                    VAR_REF
+                                                        name: i
+                                ELSE_BRANCH (IF_STATEMENT)
+                                    not set (null)
+                RETURN
+                    PARAMETER (RETURN)
+                        FUNCTION_CALL
+                            CALLEE (FUNCTION_CALL)
+                                STRUCT_ACCESS
+                                    struct member: handler
+                                    pointer: 1
+                                    SRC (STRUCT_ACCESS)
+                                        VAR_REF
+                                            name: node
+                            ARGS (FUNCTION_CALL, count=2)
+                                ARRAY_ACCESS
+                                    ARRAY
+                                        VAR_REF
+                                            name: arr
+                                    INDEX (ARRAY_ACCESS)
+                                        VAR_REF
+                                            name: index
+                                FUNCTION_CALL
+                                    CALLEE (FUNCTION_CALL)
+                                        VAR_REF
+                                            name: add
+                                    ARGS (FUNCTION_CALL, count=2)
+                                        VAR_REF
+                                            name: x
+                                        UNARY_OP
+                                            operator: OP_DEREFERENCE
+                                            prefix: true
+                                            OPERAND (UNARY_OP)
+                                                VAR_REF
+                                                    name: ptr
+    FUNCTION_DECL
+        name: main
+        TYPE (FUNCTION_DECL)
+            type: TYPE_FUNCTION
+            RETURN_TYPE
+                type: TYPE_INT
+            ARG_TYPES(count=1)
+            ARG 0
+                ident: argc
+                type: TYPE_INT
+        BODY (FUNCTION_DECL)
+            BLOCK (count=18)
+                VAR_DECL
+                    name: node
+                    TYPE (VAR_DECL)
+                        type: TYPE_STRUCT
+                        struct name: Node
+                        STRUCT_MEMBERS(count=0)
+                    INIT (VAR_DECL)
+                        not set (null)
+                VAR_DECL
+                    name: container
+                    TYPE (VAR_DECL)
+                        type: TYPE_STRUCT
+                        struct name: Container
+                        STRUCT_MEMBERS(count=0)
+                    INIT (VAR_DECL)
+                        not set (null)
+                VAR_DECL
+                    name: x
+                    TYPE (VAR_DECL)
+                        type: TYPE_INT
+                    INIT (VAR_DECL)
+                        INT_LITERAL
+                            value: 2
+                VAR_DECL
+                    name: y
+                    TYPE (VAR_DECL)
+                        type: TYPE_INT
+                    INIT (VAR_DECL)
+                        INT_LITERAL
+                            value: 3
+                VAR_DECL
+                    name: p
+                    TYPE (VAR_DECL)
+                        type: TYPE_POINTER
+                        POINTEE
+                            type: TYPE_INT
+                    INIT (VAR_DECL)
+                        UNARY_OP
+                            operator: OP_ADDRESS_OF
+                            prefix: true
+                            OPERAND (UNARY_OP)
+                                VAR_REF
+                                    name: x
+                VAR_DECL
+                    name: pp
+                    TYPE (VAR_DECL)
+                        type: TYPE_POINTER
+                        POINTEE
+                            type: TYPE_POINTER
+                            POINTEE
+                                type: TYPE_INT
+                    INIT (VAR_DECL)
+                        UNARY_OP
+                            operator: OP_ADDRESS_OF
+                            prefix: true
+                            OPERAND (UNARY_OP)
+                                VAR_REF
+                                    name: p
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        STRUCT_ACCESS
+                            struct member: value
+                            pointer: 0
+                            SRC (STRUCT_ACCESS)
+                                VAR_REF
+                                    name: node
+                    RIGHT (BINARY_OP)
+                        VAR_REF
+                            name: x
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        STRUCT_ACCESS
+                            struct member: next
+                            pointer: 0
+                            SRC (STRUCT_ACCESS)
+                                VAR_REF
+                                    name: node
+                    RIGHT (BINARY_OP)
+                        INT_LITERAL
+                            value: 0
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        STRUCT_ACCESS
+                            struct member: handler
+                            pointer: 0
+                            SRC (STRUCT_ACCESS)
+                                VAR_REF
+                                    name: node
+                    RIGHT (BINARY_OP)
+                        VAR_REF
+                            name: add
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        ARRAY_ACCESS
+                            ARRAY
+                                STRUCT_ACCESS
+                                    struct member: nodes
+                                    pointer: 0
+                                    SRC (STRUCT_ACCESS)
+                                        VAR_REF
+                                            name: container
+                            INDEX (ARRAY_ACCESS)
+                                INT_LITERAL
+                                    value: 0
+                    RIGHT (BINARY_OP)
+                        UNARY_OP
+                            operator: OP_ADDRESS_OF
+                            prefix: true
+                            OPERAND (UNARY_OP)
+                                VAR_REF
+                                    name: node
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        STRUCT_ACCESS
+                            struct member: count
+                            pointer: 0
+                            SRC (STRUCT_ACCESS)
+                                VAR_REF
+                                    name: container
+                    RIGHT (BINARY_OP)
+                        INT_LITERAL
+                            value: 1
+                IF_STATEMENT
+                    CONDITION 0 (IF_STATEMENT)
+                        BINARY_OP
+                            operator: OP_GREATER
+                            LEFT (BINARY_OP)
+                                STRUCT_ACCESS
+                                    struct member: count
+                                    pointer: 0
+                                    SRC (STRUCT_ACCESS)
+                                        VAR_REF
+                                            name: container
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 0
+                    BLOCK 0 (IF_STATEMENT)
+                        BLOCK (count=2)
+                            VAR_DECL
+                                name: current
+                                TYPE (VAR_DECL)
+                                    type: TYPE_POINTER
+                                    POINTEE
+                                        type: TYPE_STRUCT
+                                        struct name: Node
+                                        STRUCT_MEMBERS(count=0)
+                                INIT (VAR_DECL)
+                                    ARRAY_ACCESS
+                                        ARRAY
+                                            STRUCT_ACCESS
+                                                struct member: nodes
+                                                pointer: 0
+                                                SRC (STRUCT_ACCESS)
+                                                    VAR_REF
+                                                        name: container
+                                        INDEX (ARRAY_ACCESS)
+                                            INT_LITERAL
+                                                value: 0
+                            IF_STATEMENT
+                                CONDITION 0 (IF_STATEMENT)
+                                    BINARY_OP
+                                        operator: OP_EQUAL
+                                        LEFT (BINARY_OP)
+                                            STRUCT_ACCESS
+                                                struct member: next
+                                                pointer: 1
+                                                SRC (STRUCT_ACCESS)
+                                                    VAR_REF
+                                                        name: current
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 0
+                                BLOCK 0 (IF_STATEMENT)
+                                    BLOCK (count=1)
+                                        BINARY_OP
+                                            operator: OP_ASSIGN
+                                            LEFT (BINARY_OP)
+                                                STRUCT_ACCESS
+                                                    struct member: value
+                                                    pointer: 1
+                                                    SRC (STRUCT_ACCESS)
+                                                        VAR_REF
+                                                            name: current
+                                            RIGHT (BINARY_OP)
+                                                BINARY_OP
+                                                    operator: OP_ADD
+                                                    LEFT (BINARY_OP)
+                                                        STRUCT_ACCESS
+                                                            struct member: value
+                                                            pointer: 1
+                                                            SRC (STRUCT_ACCESS)
+                                                                VAR_REF
+                                                                    name: current
+                                                    RIGHT (BINARY_OP)
+                                                        VAR_REF
+                                                            name: y
+                                CONDITION 1 (IF_STATEMENT)
+                                    BINARY_OP
+                                        operator: OP_LE
+                                        LEFT (BINARY_OP)
+                                            STRUCT_ACCESS
+                                                struct member: value
+                                                pointer: 1
+                                                SRC (STRUCT_ACCESS)
+                                                    VAR_REF
+                                                        name: current
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 10
+                                BLOCK 1 (IF_STATEMENT)
+                                    BLOCK (count=1)
+                                        BINARY_OP
+                                            operator: OP_ASSIGN
+                                            LEFT (BINARY_OP)
+                                                STRUCT_ACCESS
+                                                    struct member: value
+                                                    pointer: 1
+                                                    SRC (STRUCT_ACCESS)
+                                                        VAR_REF
+                                                            name: current
+                                            RIGHT (BINARY_OP)
+                                                BINARY_OP
+                                                    operator: OP_STAR
+                                                    LEFT (BINARY_OP)
+                                                        STRUCT_ACCESS
+                                                            struct member: value
+                                                            pointer: 1
+                                                            SRC (STRUCT_ACCESS)
+                                                                VAR_REF
+                                                                    name: current
+                                                    RIGHT (BINARY_OP)
+                                                        INT_LITERAL
+                                                            value: 2
+                                ELSE_BRANCH (IF_STATEMENT)
+                                    BLOCK (count=1)
+                                        BINARY_OP
+                                            operator: OP_ASSIGN
+                                            LEFT (BINARY_OP)
+                                                STRUCT_ACCESS
+                                                    struct member: value
+                                                    pointer: 1
+                                                    SRC (STRUCT_ACCESS)
+                                                        VAR_REF
+                                                            name: current
+                                            RIGHT (BINARY_OP)
+                                                BINARY_OP
+                                                    operator: OP_RSH
+                                                    LEFT (BINARY_OP)
+                                                        STRUCT_ACCESS
+                                                            struct member: value
+                                                            pointer: 1
+                                                            SRC (STRUCT_ACCESS)
+                                                                VAR_REF
+                                                                    name: current
+                                                    RIGHT (BINARY_OP)
+                                                        INT_LITERAL
+                                                            value: 2
+                    ELSE_BRANCH (IF_STATEMENT)
+                        BLOCK (count=1)
+                            BINARY_OP
+                                operator: OP_ASSIGN
+                                LEFT (BINARY_OP)
+                                    VAR_REF
+                                        name: x
+                                RIGHT (BINARY_OP)
+                                    INT_LITERAL
+                                        value: 0
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        VAR_REF
+                            name: x
+                    RIGHT (BINARY_OP)
+                        BINARY_OP
+                            operator: OP_OR
+                            LEFT (BINARY_OP)
+                                BINARY_OP
+                                    operator: OP_ADD
+                                    LEFT (BINARY_OP)
+                                        UNARY_OP
+                                            operator: OP_DEREFERENCE
+                                            prefix: true
+                                            OPERAND (UNARY_OP)
+                                                VAR_REF
+                                                    name: pp
+                                    RIGHT (BINARY_OP)
+                                        BINARY_OP
+                                            operator: OP_LSH
+                                            LEFT (BINARY_OP)
+                                                VAR_REF
+                                                    name: x
+                                            RIGHT (BINARY_OP)
+                                                INT_LITERAL
+                                                    value: 2
+                            RIGHT (BINARY_OP)
+                                BINARY_OP
+                                    operator: OP_RSH
+                                    LEFT (BINARY_OP)
+                                        VAR_REF
+                                            name: y
+                                    RIGHT (BINARY_OP)
+                                        INT_LITERAL
+                                            value: 1
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        VAR_REF
+                            name: x
+                    RIGHT (BINARY_OP)
+                        BINARY_OP
+                            operator: OP_AND
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: x
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 255
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        VAR_REF
+                            name: x
+                    RIGHT (BINARY_OP)
+                        BINARY_OP
+                            operator: OP_OR
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: x
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 1
+                BINARY_OP
+                    operator: OP_ASSIGN
+                    LEFT (BINARY_OP)
+                        VAR_REF
+                            name: x
+                    RIGHT (BINARY_OP)
+                        BINARY_OP
+                            operator: OP_XOR
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: x
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 2
+                FOR_STATEMENT
+                    INIT (FOR_STATEMENT)
+                        VAR_DECL
+                            name: i
+                            TYPE (VAR_DECL)
+                                type: TYPE_INT
+                            INIT (VAR_DECL)
+                                INT_LITERAL
+                                    value: 0
+                    CONDITION (FOR_STATEMENT)
+                        BINARY_OP
+                            operator: OP_LESS
+                            LEFT (BINARY_OP)
+                                VAR_REF
+                                    name: i
+                            RIGHT (BINARY_OP)
+                                INT_LITERAL
+                                    value: 10
+                    UPDATION (FOR_STATEMENT)
+                        UNARY_OP
+                            operator: OP_INCREMENT
+                            prefix: false
+                            OPERAND (UNARY_OP)
+                                VAR_REF
+                                    name: i
+                    BODY (FOR_STATEMENT)
+                        BLOCK (count=2)
+                            BINARY_OP
+                                operator: OP_ASSIGN
+                                LEFT (BINARY_OP)
+                                    ARRAY_ACCESS
+                                        ARRAY
+                                            STRUCT_ACCESS
+                                                struct member: nodes
+                                                pointer: 0
+                                                SRC (STRUCT_ACCESS)
+                                                    VAR_REF
+                                                        name: container
+                                        INDEX (ARRAY_ACCESS)
+                                            VAR_REF
+                                                name: i
+                                RIGHT (BINARY_OP)
+                                    INT_LITERAL
+                                        value: 0
+                            IF_STATEMENT
+                                CONDITION 0 (IF_STATEMENT)
+                                    BINARY_OP
+                                        operator: OP_EQUAL
+                                        LEFT (BINARY_OP)
+                                            VAR_REF
+                                                name: i
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 5
+                                BLOCK 0 (IF_STATEMENT)
+                                    BREAK
+                                CONDITION 1 (IF_STATEMENT)
+                                    BINARY_OP
+                                        operator: OP_AND
+                                        LEFT (BINARY_OP)
+                                            VAR_REF
+                                                name: i
+                                        RIGHT (BINARY_OP)
+                                            INT_LITERAL
+                                                value: 1
+                                BLOCK 1 (IF_STATEMENT)
+                                    CONTINUE
+                                ELSE_BRANCH (IF_STATEMENT)
+                                    not set (null)
+                RETURN
+                    PARAMETER (RETURN)
+                        BINARY_OP
+                            operator: OP_ADD
+                            LEFT (BINARY_OP)
+                                TYPE_CAST
+                                    TYPE (TYPE_CAST)
+                                        type: TYPE_INT
+                                    OPERAND (TYPE_CAST)
+                                        SIZEOF
+                                            OPERAND TYPE (SIZEOF)
+                                                type: TYPE_STRUCT
+                                                struct name: Node
+                                                STRUCT_MEMBERS(count=0)
+                        RIGHT (BINARY_OP)
+                            FUNCTION_CALL
+                                CALLEE (FUNCTION_CALL)
+                                    VAR_REF
+                                        name: process
+                                ARGS (FUNCTION_CALL, count=2)
+                                    UNARY_OP
+                                        operator: OP_ADDRESS_OF
+                                        prefix: true
+                                        OPERAND (UNARY_OP)
+                                            VAR_REF
+                                                name: node
+                                    VAR_REF
+                                        name: x
