@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include <analysis.h>
 
 enum AST_node_type {
     AST_INT_LITERAL,
@@ -116,11 +117,13 @@ typedef struct AST_node {
 
         struct {
             char *name;
+            struct Symbol *sym;
         } var_ref;
 
         struct {
             Declarator *decl;
             struct AST_node *init;
+            struct Symbol *sym;
         } var_decl;
 
         struct {
@@ -132,11 +135,7 @@ typedef struct AST_node {
         struct {
             enum unary_operator op;
             bool prefix; // true if the operator is placed before the operand (i.e. ++x) 
-
-            union {
-                struct AST_node *operand_ast;
-                Type *operand_type;
-            };
+            struct AST_node *operand;
         } unary_op;
 
         struct {
@@ -175,9 +174,8 @@ typedef struct AST_node {
         } function_call;
 
         struct {
-            char *name;
-            Declarator **members;
-            int count;
+            Declarator *decl;
+            struct Symbol *sym;
         } struct_decl;
 
         struct {
@@ -207,6 +205,7 @@ typedef struct AST_node {
         struct {
             struct AST_node **statements;
             int count;
+            struct Scope *scope;
         } block;
 
         /*
@@ -221,10 +220,5 @@ typedef struct AST_node {
     } as;
 } AST_node;
 
-AST_node *parse_block();
-AST_node *parse_statement(bool);
-AST_node *parse_logical_expression();
-AST_node *parse_bitwise_operations();
-AST_node *parse_comparison();
-AST_node *parse_expression();
-AST_node *parse_postfix_expression();
+
+AST_node *parse_program();
