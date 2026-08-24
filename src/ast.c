@@ -1,0 +1,1123 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <ast.h>
+#include <common.h>
+#include <tokenizer.h>
+
+
+extern const char *token_to_string(enum tokentype token);
+extern AST_node *__deep_copy_node(AST_node*);
+
+
+Type *__parse_pointers(Type *t) {
+    while (CRT_TYPE == TOKEN_STAR) {
+        t->type = TYPE_POINTER;
+        t->pointee = malloc(sizeof(Type));
+        t = t->pointee;
+
+        consume(); // TOKEN_STAR
+    }
+
+    return t;
+}
+
+Type *__parse_arrays(Type *t, bool expect_int) {
+    while (CRT_TYPE == TOKEN_LBRACKET) {
+        consume();
+        t->type = TYPE_ARRAY;
+        if (expect_int) {
+            expect(TOKEN_NUM);
+            t->array.count = CRT_VAL;
+            consume();
+        } else {
+            t->array.count = 0;
+        }
+
+        t->array.memb_type = malloc(sizeof(Type));
+        t = t->array.memb_type;
+
+        expect_and_consume(TOKEN_RBRACKET);
+    }
+
+    return t;
+}
+
+
+Type *parse_type() {
+    if ((int) CRT_TYPE > TYPE_CHAR && CRT_TYPE != TOKEN_STRUCT) {
+        fprintf(stderr, "Syntax error: Expected type specifier\n");
+        return NULL;
+    }
+
+    Type *ret = malloc(sizeof(Type));
+
+    if (CRT_TYPE == TOKEN_STRUCT) {
+        consume(); // TOKEN_STRUCT
+        expect(TOKEN_IDENT); // struct name
+
+        ret->type = TYPE_STRUCT;
+        ret->structure.name = strdup(CRT_TEXT);
+
+        consume(); // TOKEN_IDENT
+    } else {
+        ret->type = (enum data_type) CRT_TYPE;
+        consume();
+    }
+
+    return ret;
+}
+
+void parse_function_args(Type *t, bool require_arg_identifiers) {
+    expect_and_consume(TOKEN_LPAR);
+
+    int capacity = 8;
+    t->function.count = 0;
+    t->function.params = calloc(8, sizeof(Declarator*));
+
+    while (CRT_TYPE != TOKEN_RPAR) {
+        if (t->function.count == capacity) {
+            capacity += 2;
+            REALLOC(t->function.params, capacity * sizeof(Declarator*));
+        }
+
+        // parse type identifier
+        Type *type = parse_type();
+
+        t->function.params[t->function.count] = malloc(sizeof(Declarator));
+        t->function.params[t->function.count]->type = malloc(sizeof(Type));
+
+        /*
+            root_type is created since all the parser functions used here work recursively,
+            so after each recursion, t->function.params[t->function.count]->type contains the leaf
+            node (the bottom-most node)
+        */
+        Type *root_type = t->function.params[t->function.count]->type;
+
+        if (!require_arg_identifiers) {
+            /*
+                Pointer parsing is not placed in the outer scope since when an array token
+                is placed after an identifier, it implies that the type is an array of [type]
+
+                Example: char *argv[] is an array of pointers to char
+            */
+            t->function.params[t->function.count]->type = __parse_pointers(
+                t->function.params[t->function.count]->type
+            );
+
+            /*
+                type is destroyed when returning from this function so a simple assignment
+                causes a segmentation fault
+            */
+            memcpy(t->function.params[t->function.count]->type, type, sizeof(Type));
+            
+            if (CRT_TYPE == TOKEN_IDENT) consume(); // ignore identifiers on function pointers
+            
+            goto label1;
+        }
+
+        // parse pointers now and copy them over as member type once arrays are parsed
+        Type *pointers = malloc(sizeof(Type));
+        Type *pointers_root = pointers;
+        pointers = __parse_pointers(pointers);
+        memcpy(pointers, type, sizeof(Type));
+
+        expect(TOKEN_IDENT);
+        t->function.params[t->function.count]->ident = strdup(CRT_TEXT);
+        consume(); // TOKEN_IDENT
+
+        t->function.params[t->function.count]->type = __parse_arrays(
+            t->function.params[t->function.count]->type, false
+        );
+        memcpy(t->function.params[t->function.count]->type, pointers_root, sizeof(Type));
+
+        label1:
+            t->function.params[t->function.count]->type = root_type;
+            t->function.count++;
+
+            if (CRT_TYPE != TOKEN_COMMA && CRT_TYPE != TOKEN_RPAR) {
+                fprintf(stderr, "Syntax error: Expected comma\n");
+                return;
+            } else if (CRT_TYPE == TOKEN_COMMA) {
+                consume();
+                if (CRT_TYPE == TOKEN_RPAR) {
+                    printf("Warning: Trailing comma\n");
+                }
+            }
+    }
+
+    consume(); // TOKEN_RPAR
+
+    if (t->function.count < capacity) {
+        REALLOC(t->function.params, t->function.count * sizeof(Declarator*));
+    }
+
+    return;
+}
+
+Declarator *parse_declarator() {
+    Declarator *decl = malloc(sizeof(Declarator));
+    decl->type = malloc(sizeof(Type));
+    Type *root_type = decl->type;
+
+    Type *t = parse_type();
+    Type *head = t;
+    Type tail = *t;
+
+    t = __parse_pointers(t);
+    memcpy(t, &tail, sizeof(Type));
+
+    if (CRT_TYPE == TOKEN_LPAR) {
+        // function pointer
+        consume(); // TOKEN_LPAR
+
+        Type *pointers = malloc(sizeof(Type));
+        Type *pointers_root = pointers; 
+        pointers = __parse_pointers(pointers);
+
+        expect(TOKEN_IDENT); // pointer name
+        decl->ident = strdup(CRT_TEXT);
+        consume();
+
+        decl->type = __parse_arrays(decl->type, true);
+        expect_and_consume(TOKEN_RPAR);
+
+        memcpy(decl->type, pointers_root, sizeof(Type));
+
+        decl->type = pointers;
+        decl->type->type = TYPE_FUNCTION;
+        decl->type->function.return_type = head;
+
+        parse_function_args(decl->type, false);
+
+        decl->type = root_type;
+        return decl;
+    }
+
+    expect(TOKEN_IDENT);
+    decl->ident = strdup(CRT_TEXT);
+    consume();
+
+    if (CRT_TYPE == TOKEN_LPAR) {
+        // function declaration
+        decl->type->type = TYPE_FUNCTION;
+        decl->type->function.return_type = head;
+
+        parse_function_args(decl->type, true);
+
+        decl->type = root_type;
+        return decl;
+    }
+
+    // anything else
+    Type *temp = decl->type;
+    decl->type = __parse_arrays(decl->type, true);
+
+    memcpy(decl->type, head, sizeof(Type));
+
+    decl->type = root_type;
+    return decl;
+}
+
+uint32_t sizeof_type(Type *t) {
+    if (t == NULL) return -1;
+
+    switch (t->type) {
+        case TYPE_VOID: {
+            return -1; // void has no size
+        }
+
+        case TYPE_INT: {
+            return 4;
+        }
+
+        case TYPE_CHAR: {
+            return 1;
+        }
+
+        case TYPE_POINTER:
+        case TYPE_FUNCTION: {
+            return ADDRESS_WIDTH;
+        }
+
+        case TYPE_ARRAY: {
+            return t->array.count * sizeof_type(t->array.memb_type);
+        }
+
+        case TYPE_STRUCT: {
+            uint32_t ret = 0;
+            for (int i = 0; i < t->structure.count; i++) {
+                ret += sizeof_type(t->structure.members[i]->type);
+            }
+
+            return ret;
+        }
+    }
+}
+
+
+AST_node *parse_postfix_expression();
+AST_node *parse_logical_expression();
+
+AST_node *__parse_dereference_or_address_of() {
+    AST_node *ret = malloc(sizeof(AST_node));
+    ret->type = AST_UNARY_OP;
+    ret->as.unary_op.op = (CRT_TYPE == TOKEN_AND) ? OP_ADDRESS_OF : OP_DEREFERENCE;
+    ret->as.unary_op.prefix = true;
+
+    consume();
+    ret->as.unary_op.operand = parse_postfix_expression();
+
+    return ret;
+}
+
+AST_node **parse_call_args(int *argc) {
+    expect_and_consume(TOKEN_LPAR);
+
+    *argc = 0;
+    int argv_max = 8;
+    AST_node **argv = (AST_node **) calloc(8, sizeof(AST_node*));
+    while (CRT_TYPE != TOKEN_RPAR) {
+        if (*argc == argv_max) {
+            argv_max += 2;
+            REALLOC(argv, argv_max * sizeof(AST_node*));
+        }
+
+        argv[(*argc)++] = parse_logical_expression();
+
+        if (CRT_TYPE != TOKEN_RPAR && CRT_TYPE != TOKEN_COMMA) {
+            fprintf(stderr, "Syntax error: Expected comma or closing parenthesis\n");
+            return NULL;
+        }
+
+        if (CRT_TYPE == TOKEN_COMMA) consume();
+    }
+
+    if (*argc > 0 && *argc < argv_max) {
+        REALLOC(argv, *argc * sizeof(AST_node*));
+    } else if (*argc == 0) {
+        free(argv);
+        argv = NULL;
+    }
+
+    consume(); // TOKEN_RPAR
+
+    return argv;
+}
+
+
+/*
+    The following functions are operator parsing functions, placed in
+    decending order, according to their precedence. These functions
+    are called recursively therefore the operator precedence is automatically
+    applied.
+*/
+
+AST_node *parse_primary() {
+    if (CRT_TYPE == TOKEN_NUM) {
+        AST_node *node = malloc(sizeof(AST_node));
+        node->type = AST_INT_LITERAL;
+        node->as.int_literal.value = CRT_VAL;
+
+        consume();
+        return node;
+    } else if (CRT_TYPE == TOKEN_IDENT) {
+        AST_node *node = malloc(sizeof(AST_node));
+        node->type = AST_VAR_REF;
+        node->as.var_ref.name = strdup(CRT_TEXT);
+
+        consume();
+        return node;
+    } else if (CRT_TYPE == TOKEN_LPAR) {
+        consume();
+        AST_node *node = parse_logical_expression();
+        expect_and_consume(TOKEN_RPAR);
+
+        return node;
+    }
+
+    return NULL;
+}
+
+AST_node *parse_postfix_expression() {
+    AST_node *node = parse_primary();
+
+    while (1) {
+        if (CRT_TYPE == TOKEN_LPAR) { // function call
+            AST_node *call_node = malloc(sizeof(AST_node));
+            call_node->type = AST_FUNCTION_CALL;
+            call_node->as.function_call.callee = node;
+
+            call_node->as.function_call.args = parse_call_args(
+                &call_node->as.function_call.count
+            );
+
+            node = call_node; // allows for call chaining like f(x)()
+        } else if (CRT_TYPE == TOKEN_MEMB_ACCESS || CRT_TYPE == TOKEN_PTR_MEMB_ACCESS) {
+            AST_node *access_node = malloc(sizeof(AST_node));
+            access_node->type = AST_STRUCT_ACCESS;
+            access_node->as.struct_access.pointer = CRT_TYPE == TOKEN_PTR_MEMB_ACCESS;
+            access_node->as.struct_access.src = node;
+            
+            consume();
+            expect(TOKEN_IDENT);
+            access_node->as.struct_access.member = strdup(CRT_TEXT);
+            consume();
+
+            node = access_node;
+        } else if (CRT_TYPE == TOKEN_LBRACKET) {
+            AST_node *array = malloc(sizeof(AST_node));
+            array->type = AST_ARRAY_ACCESS;
+            array->as.array_access.array = node;
+
+            consume(); // TOKEN_LBRACKET
+            array->as.array_access.index = parse_logical_expression();
+
+            expect_and_consume(TOKEN_RBRACKET);
+            node = array;
+        } else if (CRT_TYPE == TOKEN_INCREMENT || CRT_TYPE == TOKEN_DECREMENT) {
+            AST_node *op = malloc(sizeof(AST_node));
+            op->type = AST_UNARY_OP;
+            op->as.unary_op.op = (enum unary_operator) (CRT_TYPE - TOKEN_INCREMENT);
+            op->as.unary_op.prefix = false;
+            op->as.unary_op.operand = node;
+
+            consume();
+            node = op;
+        } else {
+            break;
+        }
+    }
+
+    return node;
+}
+
+AST_node *parse_factor() {
+    // prefix operators
+    if (CRT_TYPE == TOKEN_NOT || CRT_TYPE == TOKEN_LOGICAL_NOT) {
+        AST_node *ret = malloc(sizeof(AST_node));
+        ret->type = AST_UNARY_OP;
+        ret->as.unary_op.prefix = true;
+        ret->as.unary_op.op = (CRT_TYPE == TOKEN_NOT) ? OP_NOT : OP_LOGICAL_NOT;
+
+        consume();
+        ret->as.unary_op.operand = parse_factor(); // allows stuff like ~~x or !!x
+        return ret;
+    } else if (CRT_TYPE == TOKEN_SIZEOF) {
+        consume();
+        expect_and_consume(TOKEN_LPAR);
+
+        AST_node *ret = malloc(sizeof(AST_node));
+        ret->type = AST_SIZEOF;
+
+        if (IS_CRT_TYPE || CRT_TYPE == TOKEN_STRUCT) {
+            ret->as.sizeof_.is_type = true;
+            ret->as.sizeof_.operand_type = parse_type();
+        }   
+        else {
+            ret->as.sizeof_.is_type = false;
+            ret->as.sizeof_.operand_ast = parse_primary();
+        }
+
+        expect_and_consume(TOKEN_RPAR);
+        return ret;
+    } else if (CRT_TYPE == TOKEN_LPAR) {
+        consume();
+        AST_node *ret;
+
+        // type cast
+        if (IS_CRT_TYPE || CRT_TYPE == TOKEN_STRUCT) {
+            Type *t = parse_type();
+            t = __parse_pointers(t);
+            expect_and_consume(TOKEN_RPAR);
+            
+            ret = malloc(sizeof(AST_node));
+            ret->type = AST_TYPE_CAST;
+            ret->as.type_cast.type = t;
+            ret->as.type_cast.operand = parse_factor(); // (char) sizeof(uint32_t) is valid for example
+        } else {
+            ret = parse_logical_expression();
+            expect_and_consume(TOKEN_RPAR);
+        }
+
+        return ret;
+    } else if (CRT_TYPE == TOKEN_STAR || CRT_TYPE == TOKEN_AND) {
+        return __parse_dereference_or_address_of();
+    }
+
+    return parse_postfix_expression();
+}
+
+AST_node *parse_term() {
+    AST_node *left = parse_factor();
+
+    while (CRT_TYPE == TOKEN_STAR) {
+        enum binop_operator op = OP_STAR;
+        consume();
+
+        AST_node *right = parse_factor();
+
+        AST_node *bin_node = malloc(sizeof(AST_node));
+        bin_node->type = AST_BINARY_OP;
+        bin_node->as.binary_op.op = op;
+        bin_node->as.binary_op.left = left;
+        bin_node->as.binary_op.right = right;
+
+        left = bin_node;
+    }
+
+    return left;
+}
+
+// addition/subtraction
+AST_node *parse_expression() {
+    AST_node *left = parse_term();
+    
+    while (CRT_TYPE == TOKEN_ADD || CRT_TYPE == TOKEN_SUB) {
+        enum binop_operator op = (enum binop_operator) (CRT_TYPE - TOKEN_ADD);
+        consume();
+
+        AST_node *right = parse_term();
+
+        AST_node *bin_node = malloc(sizeof(AST_node));
+        bin_node->type = AST_BINARY_OP;
+        bin_node->as.binary_op.op = op;
+        bin_node->as.binary_op.left = left;
+        bin_node->as.binary_op.right = right;
+
+        left = bin_node;
+    }
+
+    return left;
+}
+
+AST_node *parse_comparison() {
+    AST_node *left = parse_expression();
+
+    if (CRT_TYPE == TOKEN_LESS || CRT_TYPE == TOKEN_GREATER || CRT_TYPE == TOKEN_EQUAL || \
+        CRT_TYPE == TOKEN_LE || CRT_TYPE == TOKEN_GE || CRT_TYPE == TOKEN_NE
+    ) {
+        enum binop_operator op = (enum binop_operator) (CRT_TYPE - TOKEN_ADD);
+        consume();
+
+        AST_node *right = parse_expression();
+
+        AST_node *bin_node = malloc(sizeof(AST_node));
+        bin_node->type = AST_BINARY_OP;
+        bin_node->as.binary_op.op = op;
+        bin_node->as.binary_op.left = left;
+        bin_node->as.binary_op.right = right;
+
+        left = bin_node;
+    }
+
+    return left;
+}
+
+AST_node *parse_bitwise_shifts() {
+    AST_node *left = parse_comparison();
+
+    while (CRT_TYPE == TOKEN_LSH || CRT_TYPE == TOKEN_RSH) {
+        enum binop_operator op = (enum binop_operator) (CRT_TYPE - TOKEN_ADD);
+        consume();
+
+        AST_node *right = parse_comparison();
+        AST_node *bin_node = malloc(sizeof(AST_node));
+        bin_node->type = AST_BINARY_OP;
+        bin_node->as.binary_op.op = op;
+        bin_node->as.binary_op.left = left;
+        bin_node->as.binary_op.right = right;
+
+        left = bin_node;
+    }
+
+    return left;
+}
+
+AST_node *parse_bitwise_and() {
+    AST_node *left = parse_bitwise_shifts();
+
+    while (CRT_TYPE == TOKEN_AND) {
+        consume();
+
+        AST_node *right = parse_bitwise_shifts();
+        AST_node *bin_node = malloc(sizeof(AST_node));
+        bin_node->type = AST_BINARY_OP;
+        bin_node->as.binary_op.op = OP_AND;
+        bin_node->as.binary_op.left = left;
+        bin_node->as.binary_op.right = right;
+
+        left = bin_node;
+    }
+
+    return left;
+}
+
+AST_node *parse_bitwise_xor() {
+    AST_node *left = parse_bitwise_and();
+
+    while (CRT_TYPE == TOKEN_XOR) {
+        consume();
+
+        AST_node *right = parse_bitwise_and();
+        AST_node *bin_node = malloc(sizeof(AST_node));
+        bin_node->type = AST_BINARY_OP;
+        bin_node->as.binary_op.op = OP_XOR;
+        bin_node->as.binary_op.left = left;
+        bin_node->as.binary_op.right = right;
+
+        left = bin_node;
+    }
+
+    return left;
+}
+
+AST_node *parse_bitwise_operations() {
+    AST_node *left = parse_bitwise_xor();
+
+    while (CRT_TYPE == TOKEN_OR) {
+        consume();
+
+        AST_node *right = parse_bitwise_xor();
+        AST_node *bin_node = malloc(sizeof(AST_node));
+        bin_node->type = AST_BINARY_OP;
+        bin_node->as.binary_op.op = OP_OR;
+        bin_node->as.binary_op.left = left;
+        bin_node->as.binary_op.right = right;
+
+        left = bin_node;
+    }
+
+    return left;
+}
+
+AST_node *parse_logical_expression() {
+    AST_node *left = parse_bitwise_operations();
+
+    while (CRT_TYPE == TOKEN_LOGICAL_OR || CRT_TYPE == TOKEN_LOGICAL_AND) {
+        enum binop_operator op = (enum binop_operator) (CRT_TYPE - TOKEN_ADD);
+        consume();
+
+        AST_node *right = parse_bitwise_operations();
+        AST_node *bin_node = malloc(sizeof(AST_node));
+        bin_node->type = AST_BINARY_OP;
+        bin_node->as.binary_op.op = op;
+        bin_node->as.binary_op.left = left;
+        bin_node->as.binary_op.right = right;
+
+        left = bin_node;
+    }
+
+    return left;
+}
+
+AST_node *parse_statement(bool);
+AST_node *parse_block();
+
+
+AST_node *parse_if_statement() {
+    consume(); // TOKEN_IF
+    expect_and_consume(TOKEN_LPAR);
+
+    AST_node *node = malloc(sizeof(AST_node));
+    node->type = AST_IF;
+    node->as.if_statement.blocks = calloc(1, sizeof(AST_node*));
+    node->as.if_statement.conditions = calloc(1, sizeof(AST_node*));
+    node->as.if_statement.conditions[0] = parse_logical_expression();
+    expect_and_consume(TOKEN_RPAR);
+
+    if (CRT_TYPE != TOKEN_LBRACE) {
+        node->as.if_statement.blocks[0] = parse_statement(false);
+
+        /*
+            If the if statement is a standalone statement (has no other branches), then the semicolon
+            at the end of the line will be consumed by the caller of this function. If not, the semicolon
+            has to be consumed now.
+        */
+        expect(TOKEN_SEMICOLON);
+        if (OFFSET_CRT_TYPE(1) == TOKEN_ELSE) {
+            consume(); // TOKEN_SEMICOLON
+        }
+    } else {
+        node->as.if_statement.blocks[0] = parse_block();
+    }
+
+    node->as.if_statement.count = 1;
+    if (CRT_TYPE == TOKEN_ELSE) {
+        consume();
+
+        int capacity = 4;
+        REALLOC(node->as.if_statement.blocks, capacity * sizeof(AST_node*));
+        REALLOC(node->as.if_statement.conditions, capacity * sizeof(AST_node*));
+        while (CRT_TYPE == TOKEN_IF) {
+            if (node->as.if_statement.count == capacity) {
+                capacity += 2;
+                REALLOC(node->as.if_statement.blocks, capacity * sizeof(AST_node*));
+                REALLOC(node->as.if_statement.conditions, capacity * sizeof(AST_node*));
+            }
+
+            consume(); // TOKEN_IF
+            expect_and_consume(TOKEN_LPAR);
+
+            node->as.if_statement.conditions[node->as.if_statement.count] = parse_logical_expression();
+            expect_and_consume(TOKEN_RPAR);
+
+            if (CRT_TYPE != TOKEN_LBRACE) {
+                node->as.if_statement.blocks[node->as.if_statement.count] = parse_statement(false);
+                if (CRT_TYPE == TOKEN_ELSE) expect_and_consume(TOKEN_SEMICOLON);
+            } else {
+                node->as.if_statement.blocks[node->as.if_statement.count] = parse_block();
+            }
+            node->as.if_statement.count++;
+
+            /*
+                we are currently at the start of a new line. The only case it can be another else if statement
+                is if the second token of the line is TOKEN_IF
+            */
+            if (OFFSET_CRT_TYPE(1) == TOKEN_IF) {
+                expect_and_consume(TOKEN_ELSE);
+            }
+        }
+
+        if (node->as.if_statement.count < capacity) {
+            REALLOC(
+                node->as.if_statement.blocks, 
+                node->as.if_statement.count * sizeof(AST_node*)
+            );
+
+            REALLOC(
+                node->as.if_statement.conditions,
+                node->as.if_statement.count * sizeof(AST_node*)
+            );
+        }
+
+        /*
+            The above loop doesn't consume the else token unless the second token is TOKEN_IF.
+            If the above loop wasn't exectued, TOKEN_ELSE has been consumed at the start of this scope
+            but the count = 1 since there are no else if statements
+        */
+        if (CRT_TYPE == TOKEN_ELSE || node->as.if_statement.count == 1) {
+            if (CRT_TYPE == TOKEN_ELSE) consume();
+
+            if (CRT_TYPE != TOKEN_LBRACE) {
+                // semicolon is consumed by caller
+                node->as.if_statement.else_branch = parse_statement(false);
+            } else {
+                node->as.if_statement.else_branch = parse_block();
+            }
+        } else {
+            node->as.if_statement.else_branch = NULL;
+        }
+    }
+
+    return node;
+}
+
+AST_node *parse_return() {
+    expect_and_consume(TOKEN_RETURN);
+
+    AST_node *node = malloc(sizeof(AST_node));
+    node->type = AST_RETURN;
+
+    if (CRT_TYPE != TOKEN_SEMICOLON) {
+        node->as.return_statement.expr = parse_logical_expression();
+    } else {
+        node->as.return_statement.expr = NULL;
+    }
+
+    return node;
+}
+
+AST_node *parse_while() {
+    expect_and_consume(TOKEN_WHILE);
+
+    AST_node *node = malloc(sizeof(AST_node));
+    node->type = AST_WHILE;
+    
+    expect_and_consume(TOKEN_LPAR);
+    node->as.while_statement.condition = parse_logical_expression();
+    expect_and_consume(TOKEN_RPAR);
+
+    node->as.while_statement.body = parse_block();
+
+    return node;
+}
+
+AST_node *parse_for() {
+    expect_and_consume(TOKEN_FOR);
+    expect_and_consume(TOKEN_LPAR);
+
+    AST_node *node = malloc(sizeof(AST_node));
+    node->type = AST_FOR;
+    node->as.for_statement.init = parse_statement(true);
+    node->as.for_statement.condition = parse_logical_expression();
+
+    expect_and_consume(TOKEN_SEMICOLON);
+    node->as.for_statement.updation = parse_statement(false);
+
+    expect_and_consume(TOKEN_RPAR);
+    node->as.for_statement.body = parse_block();
+
+    return node;
+}
+
+// this function assumes that the lvalue of the assignment is already parsed
+AST_node *__parse_assignment(AST_node *left) {
+    AST_node *node = left;
+
+    if (CRT_TYPE - TOKEN_ADD < OP_ASSIGN) { // augmented assignment
+        /*
+            Augmented assignment will just be transformed into a reassignment.
+            i.e. x (op)= b is transformed into x = x (op) (b)
+        */
+
+        AST_node *node_right = __deep_copy_node(left);
+
+        AST_node *right = malloc(sizeof(AST_node));
+        right->type = AST_BINARY_OP;
+        right->as.binary_op.op = CRT_TYPE - TOKEN_ADD;
+        right->as.binary_op.left = node_right;
+        
+        consume(); // operator
+        consume(); // TOKEN_ASSIGN
+        right->as.binary_op.right = parse_logical_expression();
+
+        node = malloc(sizeof(AST_node));
+        node->type = AST_BINARY_OP;
+        node->as.binary_op.op = OP_ASSIGN;
+        node->as.binary_op.left = left;
+        node->as.binary_op.right = right;
+    } else if (CRT_TYPE == TOKEN_ASSIGN) {
+        consume();
+
+        node = malloc(sizeof(AST_node));
+        node->type = AST_BINARY_OP;
+        node->as.binary_op.op = OP_ASSIGN;
+        node->as.binary_op.left = left;
+        node->as.binary_op.right = parse_logical_expression();
+    }
+
+    return node;
+}
+
+AST_node *parse_declaration(Declarator *decl) {
+    AST_node *node = malloc(sizeof(AST_node));
+
+    if (decl->type->type == TYPE_FUNCTION) {
+        node->type = AST_FUNCTION_DECL;
+        node->as.function_decl.decl = decl;
+        node->as.function_decl.body = parse_block();
+
+        return node;
+    }
+
+    // variable declaration
+    node->type = AST_VAR_DECL;
+    node->as.var_decl.decl = decl;
+    node->as.var_decl.init = NULL;
+    if (CRT_TYPE == TOKEN_ASSIGN) {
+        consume();
+        node->as.var_decl.init = parse_logical_expression();
+    }
+
+    return node;
+}
+
+AST_node *parse_statement(bool expect_semicolon) {
+    AST_node *node = NULL;
+
+    switch (CRT_TYPE) {
+        // variable or function declaration
+        case TOKEN_VOID:
+        case TOKEN_INT:
+        case TOKEN_CHAR: {
+            Declarator *decl = parse_declarator();
+            node = parse_declaration(decl);
+
+            break;
+        }
+
+        case TOKEN_IDENT: {
+            /*
+                The only cases where the first token in a line of code is an identifier would be:
+                1. Direct reassignment (x = a + b)
+                2. Augmented assignment (x += a + b)
+                3. Array element modification (arr[a] = x)
+                4. Function calling (func(x, y))
+                5. Increment/decrement (x++)
+                6. Struct member access combined with any of the above
+            */
+
+            AST_node *left = parse_postfix_expression();
+            if (left->type == AST_FUNCTION_CALL || left->type == AST_UNARY_OP) {
+                // function call or increment/decrement
+                node = left;
+                break;
+            }
+
+            node = __parse_assignment(left);
+            break;
+        }
+
+        case TOKEN_STAR: {// pointer dereference
+            AST_node *left = __parse_dereference_or_address_of();
+            node = __parse_assignment(left);
+
+            if (node == left) {
+                // no assignment operator
+                printf("Warning: Expression result unused\n");
+            }
+
+            break;
+        }
+
+        case TOKEN_NUM:
+        case TOKEN_NOT:
+        case TOKEN_LOGICAL_NOT:
+        case TOKEN_SIZEOF:
+        case TOKEN_AND: {
+            printf("Warning: Expression result unused\n");
+            break;
+        }
+
+        case TOKEN_IF: {
+            node = parse_if_statement();
+            break;
+        }
+
+        case TOKEN_WHILE: {
+            node = parse_while();
+            break;
+        }
+
+        case TOKEN_FOR: {
+            node = parse_for();
+            break;
+        }
+
+        case TOKEN_RETURN: {
+            node = parse_return();
+            break;
+        }
+
+        // ++x
+        case TOKEN_INCREMENT:
+        case TOKEN_DECREMENT: {
+            node = malloc(sizeof(AST_node));
+            node->type = AST_UNARY_OP;
+            node->as.unary_op.op = (enum unary_operator) (CRT_TYPE - TOKEN_INCREMENT);
+            node->as.unary_op.prefix = true;
+
+            consume(); // TOKEN_INCREMENT
+            expect(TOKEN_IDENT);
+            AST_node *var_ref = malloc(sizeof(AST_node));
+            var_ref->type = AST_VAR_REF;
+            var_ref->as.var_ref.name = strdup(CRT_TEXT);
+
+            node->as.unary_op.operand = var_ref;
+            consume(); // TOKEN_IDENT
+            break;
+        }
+
+        case TOKEN_BREAK:
+        case TOKEN_CONTINUE: {
+            node = malloc(sizeof(AST_node));
+            node->type = (CRT_TYPE == TOKEN_BREAK) ? AST_BREAK : AST_CONTINUE;
+
+            consume();
+            break;
+        }
+
+        case TOKEN_STRUCT: {
+            /*
+                variable declaration or struct definition
+
+                variable declaration has 2 cases:
+                1. struct s variable = ...
+                2. anonymous struct as variable type, which will be implemented later
+
+                The easy way to distinguish between the 2 is checking the third token, if its a left bracket
+                then its a struct declaration: struct s { ... }
+            */
+
+            // struct declaration
+            if (OFFSET_CRT_TYPE(2) == TOKEN_LBRACE) {
+                Type *type = malloc(sizeof(Type));
+
+                node = malloc(sizeof(AST_node));
+                node->type = AST_STRUCT_DECL;
+
+                consume(); // TOKEN_STRUCT
+                expect(TOKEN_IDENT);
+                type->structure.name = strdup(CRT_TEXT);
+
+                consume(); // TOKEN_IDENT
+                consume(); // TOKEN_LBRACE
+
+                char *identifier = NULL;
+
+                int capacity = 8;
+                int count = 0;
+                type->structure.members = (Declarator **) calloc(capacity, sizeof(Declarator*));
+                while (CRT_TYPE != TOKEN_RBRACE) {
+                    if (count == capacity) {
+                        capacity += 2;
+                        REALLOC(type->structure.members, capacity * sizeof(Declarator*));
+                    }
+
+                    type->structure.members[count++] = parse_declarator();
+
+                    expect_and_consume(TOKEN_SEMICOLON);
+                }
+
+                if (count < capacity) {
+                    REALLOC(type->structure.members, count * sizeof(Declarator*));
+                }
+
+                consume(); // TOKEN_RBRACE
+                type->structure.count = count;
+
+                Declarator *decl = malloc(sizeof(Declarator));
+                decl->type = type;
+                decl->ident = strdup(type->structure.name);
+                node->as.struct_decl.decl = decl;
+
+                /*
+                    A lazy workaround for the following issue that arises:
+                    struct definitions require a semicolon at the end of their definition.
+
+                    However, at the end of this function, there is the rule: if the previous token
+                    is a right brace, meaning a block was just parsed, don't expect a semicolon. But,
+                    at the end of the struct definition there is both a right brace and a semicolon so the function,
+                    would not consume it. Also, just consuming the token here isn't enough, if break was used instead of
+                    return, at the end of the function, it would check the previous token and it would be a 
+                    semicolon instead of a right brace so it would expext another semicolon.
+                */
+                expect_and_consume(TOKEN_SEMICOLON);
+                return node;
+            } else {
+                /*
+                    Since variable declarations with a struct type (that may or may not has been declared)
+                    i.e. struct s *ptr, where s is undefined, is valid C code.
+
+                    For this reason, a type table is not created during parsing to store all defined structs.
+                    Instead, whenever a variable is declared with a struct type, its type in the AST, will contain
+                    the referenced struct name, but memb_types = memb_names = NULL and count = 0.
+                */
+                Declarator *decl = parse_declarator();
+                node = parse_declaration(decl);
+                break;
+            }
+        }
+
+        case TOKEN_ELSE:
+        case TOKEN_ADD:
+        case TOKEN_SUB:
+        case TOKEN_LESS:
+        case TOKEN_GREATER:
+        case TOKEN_EQUAL:
+        case TOKEN_LE:
+        case TOKEN_GE:
+        case TOKEN_NE:
+        case TOKEN_LSH:
+        case TOKEN_RSH:
+        case TOKEN_XOR:
+        case TOKEN_OR:
+        case TOKEN_LOGICAL_AND:
+        case TOKEN_LOGICAL_OR:
+        case TOKEN_ASSIGN:
+        case TOKEN_LPAR:
+        case TOKEN_RPAR:
+        case TOKEN_LBRACE:
+        case TOKEN_RBRACE:
+        case TOKEN_LBRACKET:
+        case TOKEN_RBRACKET:
+        case TOKEN_SEMICOLON:
+        case TOKEN_COMMA:
+        case TOKEN_MEMB_ACCESS:
+        case TOKEN_PTR_MEMB_ACCESS: {
+            printf("Syntax error: Unexpected token %s", token_to_string(CRT_TYPE));
+            break;
+        }
+
+        case TOKEN_EOF: {
+            printf("Unexpected end of file\n");
+            break;
+        }
+    }
+
+    // a block was just parsed, therefore a semicolon is not required
+    if (OFFSET_CRT_TYPE(-1) != TOKEN_RBRACE && expect_semicolon) {
+        expect_and_consume(TOKEN_SEMICOLON);
+    }
+
+    return node;
+}
+
+AST_node *parse_block() {
+    expect_and_consume(TOKEN_LBRACE);
+
+    AST_node *node = malloc(sizeof(AST_node));
+    node->type = AST_BLOCK;
+    node->as.block.statements = (AST_node **) calloc(8, sizeof(AST_node*));
+    node->as.block.count = 0;
+
+    int capacity = 8;
+
+    while (CRT_TYPE != TOKEN_RBRACE) {
+        if (node->as.block.count == capacity) {
+            capacity += 8;
+            REALLOC(node->as.block.statements, capacity * sizeof(AST_node*));
+        }
+
+        if (CRT_TYPE == TOKEN_EOF) {
+            fprintf(stderr, "Syntax error: Expected closing brace\n");
+            return NULL;
+        }
+
+        node->as.block.statements[node->as.block.count++] = parse_statement(true);
+    }
+
+    if (node->as.block.count < capacity) {
+        REALLOC(node->as.block.statements, node->as.block.count * sizeof(AST_node*));
+    }
+
+    consume(); // TOKEN_RBRACE
+    return node;
+}
+
+AST_node *parse_program() {
+    AST_node *node = malloc(sizeof(AST_node));
+    int capacity = 8;
+
+    node->type = AST_PROGRAM;
+    node->as.program.count = 0;
+    node->as.program.declarations = (AST_node **) calloc(capacity, sizeof(AST_node*));
+
+    while (CRT_TYPE != TOKEN_EOF) {
+        if (node->as.program.count == capacity) {
+            capacity += 8;
+            REALLOC(node->as.program.declarations, capacity * sizeof(AST_node*));
+        }
+
+        AST_node *statement = parse_statement(true);
+        if (statement->type == AST_VAR_DECL || statement->type == AST_FUNCTION_DECL || statement->type == AST_STRUCT_DECL) {
+            node->as.program.declarations[node->as.program.count++] = statement;
+            continue;
+        }
+
+        // statement is not a declaration
+        fprintf(stderr, "Syntax error: Only declarations are allowed in the global scope\n");
+        return NULL;
+    }
+
+    if (node->as.program.count < capacity) {
+        REALLOC(
+            node->as.program.declarations, 
+            node->as.program.count * sizeof(AST_node*)
+        );
+    }
+
+    return node;
+}
