@@ -23,7 +23,15 @@ gcc src/* -I./include -o compiler.bin
 + ~~Add prefix/suffix increment and decrement~~
 + ~~Add else if/else branch parsing and single line branch that does not require braces~~
 + ~~Add for loops, break and continue keywords~~
-+ ~~Add struct type parsing and struct member accsess~~
++ ~~Add struct type parsing and struct member access~~
 + ~~Add type casts and sizeof()~~
 + Add error reporting
-+ Semantic analysis (hopefully)
++ Analyze the AST semantically and populate it with symbols and scopes, along with type and name resolution 
++ Type checking
++ Code emission stage
+
+### Low priority todos
+
++ typedef, extern and static keywords
++ Inline assembly
++ Preprocessor directives (include and define)
