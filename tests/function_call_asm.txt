@@ -1,0 +1,28 @@
+36 tokens parsed
+
+=========================
+section .data
+dd 0 ; var a @ off 0
+dd 0 ; var b @ off 4
+
+section .code
+
+f:
+        push bp
+        mov bp, sp
+        movd a, [bp+8]
+        mov sp, bp
+        pop bp
+        ret
+
+main:
+        push bp
+        mov bp, sp
+        movd r0, [$.data+4]
+        push r0
+        call f
+        add sp, 4
+        mov a, 0
+        mov sp, bp
+        pop bp
+        ret
