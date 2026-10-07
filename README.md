@@ -25,13 +25,16 @@ gcc src/* -I./include -o compiler.bin
 + ~~Add for loops, break and continue keywords~~
 + ~~Add struct type parsing and struct member access~~
 + ~~Add type casts and sizeof()~~
-+ Add error reporting
 + ~~Analyze the AST semantically and populate it with symbols and scopes, along with type and name resolution~~
 + ~~Type checking~~
++ Add error reporting (apparently gonna be here forever) & data freeing
 + Code emission for: ~~global and~~ local variable declarations, binary and unary operators, ~~return statements, function declarations, function calls~~, if/for/while statements and struct/array member access
 
-### Low priority todos
+### Low priority todos 
 
-+ typedef, extern and static keywords
+In descending priority order:
+
++ String literals
 + Inline assembly
 + Preprocessor directives (include and define)
++ typedef, extern and static keywords
