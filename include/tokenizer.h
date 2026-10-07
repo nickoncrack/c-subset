@@ -2,6 +2,16 @@
 
 #include <stdint.h>
 
+#define CRT_TYPE            get_current_token().type
+#define CRT_VAL             get_current_token().val
+#define CRT_TEXT            get_current_token().text
+#define CRT_LINE            get_current_token().line
+#define CRT_COLUMN          get_current_token().column
+#define OFFSET_CRT_TYPE(n)  (*(arr + n)).type
+
+#define IS_CRT_TYPE         ((CRT_TYPE == TOKEN_VOID) || (CRT_TYPE == TOKEN_INT) || (CRT_TYPE == TOKEN_CHAR))
+
+
 enum tokentype {
     TOKEN_VOID,
     TOKEN_INT,
@@ -61,4 +71,12 @@ typedef struct {
 } token_t;
 
 
+extern token_t *arr;
+
+token_t get_current_token();
 int get_next_token(char *src, token_t *dst);
+uint32_t tokenize(char *p, token_t *dst);
+
+void consume();
+void expect(enum tokentype token);
+void expect_and_consume(enum tokentype token);

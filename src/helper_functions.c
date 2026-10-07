@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <ast.h>
+#include <common.h>
 #include <analysis.h>
 #include <tokenizer.h>
 
@@ -102,7 +103,6 @@ const char *unary_op_to_string(enum unary_operator op) {
         STRING_CASE(OP_LOGICAL_NOT);
         STRING_CASE(OP_DEREFERENCE);
         STRING_CASE(OP_ADDRESS_OF);
-        STRING_CASE(OP_SIZEOF);
     }
 }
 
@@ -180,7 +180,12 @@ void print_type(Type *t, int d) {
                     printf("ARG %d\n", i);
 
                     __print_tabs(d+1);
-                    printf("ident: %s\n", t->function.params[i]->ident);
+                    if (t->function.params[i]->ident != NULL) {
+                        printf("ident: %s\n", t->function.params[i]->ident);
+                    } else {
+                        printf("ident: not set (null)\n");
+                    }
+
                     print_type(t->function.params[i]->type, d+1);
                 }
             }
@@ -455,6 +460,9 @@ void print_child(AST_node *node) {
                 printf("MEMBER %d (STRUCT_DECL)\n", i);
                 __print_tabs(depth);
                 printf("name: %s\n", t->structure.members[i]->ident);
+                
+                __print_tabs(depth);
+                printf("offset: %d\n", t->structure.members[i]->offset);
 
                 print_type(t->structure.members[i]->type, depth);
             }
@@ -567,7 +575,7 @@ void print_AST(AST_node *program) {
 Type *__deep_copy_type(Type *t) {
     if (t == NULL) return NULL;
 
-    Type *ret = malloc(sizeof(Type));
+    Type *ret = calloc(1, sizeof(Type));
     ret->type = t->type;
 
     switch (t->type) {
@@ -588,8 +596,12 @@ Type *__deep_copy_type(Type *t) {
             ret->function.params = calloc(t->function.count, sizeof(Declarator*));
 
             for (int i = 0; i < t->function.count; i++) {
+                ret->structure.members[i] = calloc(1, sizeof(Declarator));
                 ret->function.params[i]->type = __deep_copy_type(t->function.params[i]->type);
-                ret->function.params[i]->ident = strdup(t->function.params[i]->ident);
+
+                if (ret->function.params[i]->ident != NULL) {
+                    ret->function.params[i]->ident = strdup(t->function.params[i]->ident);
+                }
             }
             break;
         }
@@ -606,6 +618,7 @@ Type *__deep_copy_type(Type *t) {
             ret->structure.members = calloc(t->structure.count, sizeof(Declarator*)); 
 
             for (int i = 0; i < t->structure.count; i++) {
+                ret->structure.members[i] = malloc(sizeof(Declarator));
                 ret->structure.members[i]->type = __deep_copy_type(t->structure.members[i]->type);
                 ret->structure.members[i]->ident = strdup(t->structure.members[i]->ident);
             }
@@ -967,4 +980,47 @@ void free_AST(AST_node *program) {
     free(program->as.program.declarations);
     free(program);
     return;
+}
+
+uint32_t sizeof_type(Type *t) {
+    if (t == NULL) return -1;
+    if (t->size != 0) return t->size;
+
+    switch (t->type) {
+        case TYPE_VOID: {
+            t->size = -1;
+            return -1; // void has no size
+        }
+
+        case TYPE_INT: {
+            t->size = 4;
+            return 4;
+        }
+
+        case TYPE_CHAR: {
+            t->size = 1;
+            return 1;
+        }
+
+        case TYPE_POINTER:
+        case TYPE_FUNCTION: {
+            t->size = ADDRESS_WIDTH;
+            return ADDRESS_WIDTH;
+        }
+
+        case TYPE_ARRAY: {
+            t->size = t->array.count * sizeof_type(t->array.memb_type);
+            return t->size;
+        }
+
+        case TYPE_STRUCT: {
+            uint32_t ret = 0;
+            for (int i = 0; i < t->structure.count; i++) {
+                ret += sizeof_type(t->structure.members[i]->type);
+            }
+
+            t->size = ret;
+            return ret;
+        }
+    }
 }

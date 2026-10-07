@@ -3,6 +3,7 @@
 
 #include <ast.h>
 #include <tokenizer.h>
+#include <generator.h>
 
 
 extern const char *token_to_string(enum tokentype token);
@@ -14,6 +15,10 @@ extern token_t *arr;
 
 
 char program[4096];
+
+extern void print_type(Type *t, int d);
+extern void analyze_AST(AST_node *program, SymbolTable *tab);
+extern Location *generate_code(AST_node *node);
 
 int main(int argc, char *argv[]) {
     if (argc == 1) {
@@ -33,8 +38,6 @@ int main(int argc, char *argv[]) {
 
     fread(program, 1, size, f);
 
-    printf("%s\n", program);
-
     uint32_t tokens = tokenize(program, arr);
     printf("%d tokens parsed\n", tokens);
     printf("\n=========================\n");
@@ -43,10 +46,32 @@ int main(int argc, char *argv[]) {
     //     printf("%s ", token_to_string(arr[i].type));
     // }
 
-    printf("\n=========================\n");
+    // printf("\n=========================\n");
     
     AST_node *program = parse_program();
-    print_AST(program);
+
+    SymbolTable table;
+    analyze_AST(program, &table);
+
+    // print_AST(program);
+
+    // walk 1: global declarations
+    puts("section .data");
+    for (int i = 0; i < program->as.program.count; i++) {
+        AST_node *decl = program->as.program.declarations[i];
+
+        if (decl->type == AST_VAR_DECL) generate_code(decl);
+    }
+
+    // walk 2: everything else
+    puts("\nsection .code");
+    for (int i = 0; i < program->as.program.count; i++) {
+        AST_node *decl = program->as.program.declarations[i];
+
+        if (decl->type != AST_VAR_DECL) generate_code(decl);
+    }
+
+    // print_AST(program);
 
     free_AST(program);
     free(orig_arr_ptr);

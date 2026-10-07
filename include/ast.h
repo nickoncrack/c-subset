@@ -1,9 +1,19 @@
+/*
+    TODO:
+    1. function calling conventions
+    2. inline assembly
+    3. preprocessor directives
+    4. typedef keyword
+*/
+
 #pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
 
+#include <typing.h>
 #include <analysis.h>
+
 
 enum AST_node_type {
     AST_INT_LITERAL,
@@ -26,16 +36,6 @@ enum AST_node_type {
     AST_SIZEOF,
     AST_BLOCK,
     AST_PROGRAM
-};
-
-enum data_type {
-    TYPE_VOID,
-    TYPE_INT,
-    TYPE_CHAR,
-    TYPE_POINTER,
-    TYPE_FUNCTION,
-    TYPE_ARRAY,
-    TYPE_STRUCT
 };
 
 enum binop_operator {
@@ -64,51 +64,23 @@ enum unary_operator {
     OP_NOT,
     OP_LOGICAL_NOT,
     OP_DEREFERENCE,
-    OP_ADDRESS_OF,
-    OP_SIZEOF
+    OP_ADDRESS_OF
 };
 
+enum block_type {
+    BLOCK_FUNCTION,
+    BLOCK_CONDITION,
+    BLOCK_LOOP
+};
 
-typedef struct Type {
-    enum data_type type;
-
-    union {
-        struct Type *pointee;
-
-        struct {
-            struct Type *return_type;
-            struct Declarator **params;
-            int count;
-        } function;
-
-        struct {
-            struct Type *memb_type;
-            int count;
-        } array;
-
-        struct {
-            char *name;
-            struct Declarator **members;
-            int count;
-        } structure;
-    };
-} Type;
-
-/*
-    A declarator struct which contains both a type and identifier
-    makes it significantly easier to parse complex declarations like
-    a function pointer, where the identifier is in between parts of 
-    the declaration (void (*fptr)(int), "fptr", the identifier is in
-    between void and (int), both of which contribute to the declaration)
-*/
-typedef struct Declarator {
-    Type *type;
-    char *ident;
-} Declarator;
-
+enum func_call_convention {
+    CONV_CDECL,
+    CONV_STDCALL
+};
 
 typedef struct AST_node {
     enum AST_node_type type;
+    Type *expr_type;
 
     union {
         struct {
@@ -163,7 +135,10 @@ typedef struct AST_node {
         } return_statement;
 
         struct {
+            // enum func_call_convention conv;
+
             Declarator *decl;
+            struct Symbol *sym;
             struct AST_node *body;
         } function_decl;
 
@@ -203,6 +178,7 @@ typedef struct AST_node {
         } sizeof_;
 
         struct {
+            enum block_type type;
             struct AST_node **statements;
             int count;
             struct Scope *scope;
@@ -216,6 +192,8 @@ typedef struct AST_node {
         struct {
             struct AST_node **declarations;
             int count;
+            
+            struct Scope *global;
         } program;
     } as;
 } AST_node;
