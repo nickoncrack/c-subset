@@ -26,9 +26,9 @@ gcc src/* -I./include -o compiler.bin
 + ~~Add struct type parsing and struct member access~~
 + ~~Add type casts and sizeof()~~
 + Add error reporting
-+ Analyze the AST semantically and populate it with symbols and scopes, along with type and name resolution 
-+ Type checking
-+ Code emission stage
++ ~~Analyze the AST semantically and populate it with symbols and scopes, along with type and name resolution~~
++ ~~Type checking~~
++ Code emission for: ~~global and~~ local variable declarations, binary and unary operators, ~~return statements, function declarations, function calls~~, if/for/while statements and struct/array member access
 
 ### Low priority todos
 
