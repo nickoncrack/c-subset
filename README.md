@@ -29,7 +29,7 @@ gcc src/* -I./include -o compiler.bin
 + ~~Type checking~~
 + Add error reporting (apparently gonna be here forever) & data freeing
 + Label creation for jumping after a conditional statement to the rest of the code
-+ Code emission for: ~~global and~~ local variable declarations, binary and unary operators, ~~return statements, function declarations, function calls~~, ~~if~~/for/while statements and struct/array member access
++ Code emission for: ~~global and~~ local variable declarations, binary and unary operators, ~~return statements, function declarations, function calls, if/for/while statements and struct/array member access~~
 
 ### Low priority todos 
 
