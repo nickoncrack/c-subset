@@ -28,7 +28,8 @@ gcc src/* -I./include -o compiler.bin
 + ~~Analyze the AST semantically and populate it with symbols and scopes, along with type and name resolution~~
 + ~~Type checking~~
 + Add error reporting (apparently gonna be here forever) & data freeing
-+ Code emission for: ~~global and~~ local variable declarations, binary and unary operators, ~~return statements, function declarations, function calls~~, if/for/while statements and struct/array member access
++ Label creation for jumping after a conditional statement to the rest of the code
++ Code emission for: ~~global and~~ local variable declarations, binary and unary operators, ~~return statements, function declarations, function calls~~, ~~if~~/for/while statements and struct/array member access
 
 ### Low priority todos 
 
