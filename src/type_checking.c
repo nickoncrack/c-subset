@@ -1,6 +1,6 @@
 #include <ast.h>
 #include <typing.h>
-#include <common.h>
+#include <common.h> 
 
 
 bool typecmp(Type *a, Type *b) {

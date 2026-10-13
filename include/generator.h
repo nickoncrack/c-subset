@@ -1,7 +1,5 @@
 #pragma once
 
-#include <ast.h>
-
 #define NREGISTERS 10
 #define __GENERATOR_ANNOTATE_SYMBOL_NAMES
 
@@ -26,6 +24,7 @@ typedef enum {
 
 enum location_type {
     LOC_DATA,
+    LOC_CODE,
     LOC_REGISTER,
     LOC_LITERAL
 };
@@ -51,6 +50,7 @@ typedef struct {
         I was very confused because of it)
     */
     bool dereference;
+    bool freeable_reg;
 
     Register reg;
     int offset;
@@ -59,3 +59,4 @@ typedef struct {
 
 Register allocate_register();
 void free_register(Register r);
+void set_reg_used(Register r);

@@ -56,6 +56,7 @@ Symbol *symbol_table_insert(Declarator *decl, Scope *scope) {
     sym->decl = __deep_copy_declarator(decl);
     sym->scope_depth = scope->depth;
     sym->next = NULL;
+    sym->loc = calloc(1, sizeof(Location));
 
     if (scope->head != NULL) {
         Symbol *s = scope->head;
@@ -112,7 +113,7 @@ bool is_constant_expr(AST_node *node) {
     Given an arbitrary type, this function will check if it eventually points
     to a struct type
 */
-Type *check_struct_type(Type *t) {
+Type *check_struct_type(Type *t, char **dst) {
     Type *u = t;
     while (1) {
         if (!u) return NULL;
@@ -125,28 +126,93 @@ Type *check_struct_type(Type *t) {
             }
 
             case TYPE_POINTER: {
+                if (u->pointee->type == TYPE_STRUCT) {
+                    *dst = u->pointee->structure.name;
+                    return u;   
+                }
+
                 u = u->pointee;
                 continue;
             }
 
             case TYPE_FUNCTION: {
+                if (u->function.return_type->type == TYPE_STRUCT) {
+                    *dst = u->function.return_type->structure.name;
+                    return u;
+                }
+
                 u = u->function.return_type;
                 continue;
             }
 
             case TYPE_ARRAY: {
+                if (u->array.memb_type->type == TYPE_STRUCT) {
+                    *dst = u->array.memb_type->structure.name;
+                    return u;
+                }
+
                 u = u->array.memb_type;
                 continue;
             }
 
             case TYPE_STRUCT: {
+                *dst = u->structure.name;
                 return u;
             }
         }
     }
 }
 
-extern void print_type(Type *t, int d);
+/*
+    During code parsing, if a variable/function argument declaration has a struct type, that type
+    is temporarily empty, and only containing the struct's identifier. This causes problems during
+    type checking therefore this needs to be fixed using this function.
+*/
+void __validate_struct_type(Type *t, SymbolTable *tab) {
+    char *name = calloc(32, sizeof(char));
+    Type *u = check_struct_type(t, &name);
+    bool is_struct = t->type == TYPE_STRUCT;
+
+    if (u) {
+        Symbol *struct_sym = struct_tag_lookup(name, tab);
+        if (!struct_sym) {
+            printf("Semantic error: Use of undeclared identifier %s\n", u->structure.name);
+            
+            free(name);
+            return;
+        }
+
+        Type *v = __deep_copy_type(struct_sym->decl->type);
+        if (is_struct) {
+            *t = *v;
+        } else {
+            switch (u->type) {
+                case TYPE_POINTER: {
+                    *(u->pointee) = *v;
+                    break;
+                }
+
+                case TYPE_FUNCTION: {
+                    *(u->function.return_type) = *v;
+                    break;
+                }
+
+                case TYPE_ARRAY: {
+                    *(u->array.memb_type) = *v;
+                    break;
+                }
+
+                default: {
+                    break;
+                }
+            }
+        }
+    }
+
+    free(name);
+    return;
+}
+
 void analyze_var_decl(AST_node *decl, SymbolTable *tab) {
     if (tab->crt_scope->depth == 0 && decl->as.var_decl.init != NULL) {
         if (!is_constant_expr(decl->as.var_decl.init)) {
@@ -161,17 +227,7 @@ void analyze_var_decl(AST_node *decl, SymbolTable *tab) {
         return;
     }
 
-    Type *t = check_struct_type(decl->as.var_decl.decl->type);
-
-    if (t) {
-        Symbol *struct_sym = struct_tag_lookup(t->structure.name, tab);
-        if (!struct_sym) {
-            printf("Semantic error: Use of undeclared identifier %s\n", t->structure.name);
-            return;
-        }
-
-        *t = *__deep_copy_type(struct_sym->decl->type);
-    }    
+    __validate_struct_type(decl->as.var_decl.decl->type, tab);
 
     decl->as.var_decl.sym = symbol_table_insert(decl->as.var_decl.decl, tab->crt_scope);
 }
@@ -194,8 +250,6 @@ void analyze_struct_decl(AST_node *decl, SymbolTable *tab) {
         return;
     }
 
-    decl->as.struct_decl.sym = symbol_table_insert(decl->as.struct_decl.decl, tab->tag_scope);
-
     uint32_t offset = 0;
     for (int i = 0; i < decl->as.struct_decl.decl->type->structure.count; i++) {
         Declarator *memb_decl = decl->as.struct_decl.decl->type->structure.members[i];
@@ -203,6 +257,8 @@ void analyze_struct_decl(AST_node *decl, SymbolTable *tab) {
         memb_decl->offset = offset;
         offset += sizeof_type(memb_decl->type);
     }
+
+    decl->as.struct_decl.sym = symbol_table_insert(decl->as.struct_decl.decl, tab->tag_scope);
 }
 
 void analyze_func_decl(AST_node *decl, SymbolTable *tab) {
@@ -280,13 +336,17 @@ Type *analyze_node(AST_node *node, SymbolTable *tab) {
             uint32_t size = sizeof_type(node->as.var_decl.decl->type);
 
             if (tab->crt_scope->depth == 0) { // global scope
-                node->as.var_decl.sym->stack_offset = crt_global_data_offset;
+                node->as.var_decl.sym->loc->type = LOC_DATA;
+                node->as.var_decl.sym->loc->offset = crt_global_data_offset;
                 crt_global_data_offset += size;
             } else {
-                node->as.var_decl.sym->stack_offset = crt_scope_stack_offset;
+                node->as.var_decl.sym->loc->type = LOC_REGISTER;
+                node->as.var_decl.sym->loc->reg = REGISTER_BP;
+                node->as.var_decl.sym->loc->offset = crt_scope_stack_offset;
                 crt_scope_stack_offset -= size;
             }
 
+            node->as.var_decl.sym->loc->dereference = true;
             node->expr_type = node->as.var_decl.decl->type;
             return node->expr_type;
         }
@@ -300,7 +360,10 @@ Type *analyze_node(AST_node *node, SymbolTable *tab) {
                 return NULL;
             }
 
-            if (integer_compatible(left, right)) return left;
+            if (integer_compatible(left, right)) {
+                node->expr_type = right;
+                return left;
+            }
             if (POINTER_OR_INT(left, right)) {
                 if (node->as.binary_op.op == OP_ADD || node->as.binary_op.op == OP_SUB) {
                     if (is_addable(left, right)) {
@@ -493,12 +556,16 @@ Type *analyze_node(AST_node *node, SymbolTable *tab) {
         }
 
         case AST_FUNCTION_DECL: {
-            analyze_func_decl(node, tab);
+            Symbol *s = symbol_table_lookup(node->as.function_decl.decl->ident, tab);
+            if (s != NULL) {
+                printf("Semantic error: Redefinition of symbol %s\n", s->decl->ident);
+                return NULL;
+            }
 
             if (node->as.function_decl.body != NULL) {
                 Scope *scope = calloc(1, sizeof(Scope));
                 scope->type = SCOPE_FUNCTION;
-                scope->owner = node->as.function_decl.sym;
+                // scope->owner = node->as.function_decl.sym;
 
                 scope->depth = tab->crt_scope->depth + 1;
                 scope->parent = tab->crt_scope;
@@ -512,19 +579,33 @@ Type *analyze_node(AST_node *node, SymbolTable *tab) {
                 */
                 int offset = 2 * ADDRESS_WIDTH;
                 for (int i = 0; i < node->as.function_decl.decl->type->function.count; i++) {
+                    __validate_struct_type(
+                        node->as.function_decl.decl->type->function.params[i]->type,
+                        tab
+                    );
+
                     Symbol *s = symbol_table_insert(node->as.function_decl.decl->type->function.params[i], scope);
-                    s->stack_offset = offset;
+                    s->loc->type = LOC_REGISTER;
+                    s->loc->reg = REGISTER_BP;
+                    s->loc->offset = offset;
+                    s->loc->dereference = true;
 
                     offset += sizeof_type(node->as.function_decl.decl->type->function.params[i]->type);
                 }
 
-                crt_scope_stack_offset = 0;
+                node->as.function_decl.sym = symbol_table_insert(node->as.function_decl.decl, scope->parent);
+                scope->owner = node->as.function_decl.sym;
+
+                // start stack offset from -4. Offset 0 contains the old frame pointer.
+                crt_scope_stack_offset = -ADDRESS_WIDTH;
                 analyze_node(node->as.function_decl.body, tab);
                 node->as.function_decl.sym->frame_size = -crt_scope_stack_offset;
 
                 tab->crt_scope = scope->parent;
+            } else {
+                node->as.function_decl.sym = symbol_table_insert(node->as.function_decl.decl, tab->crt_scope);
             }
-
+            
             node->expr_type = node->as.function_decl.decl->type;
             return node->expr_type;
         }

@@ -216,6 +216,8 @@ void print_type(Type *t, int d) {
 
                 __print_tabs(d+1);
                 printf("name: %s\n", t->structure.members[i]->ident);
+                __print_tabs(d+1);
+                printf("offset: %d\n", t->structure.members[i]->offset);
                 print_type(t->structure.members[i]->type, d+2);
             }
 
@@ -621,6 +623,7 @@ Type *__deep_copy_type(Type *t) {
                 ret->structure.members[i] = malloc(sizeof(Declarator));
                 ret->structure.members[i]->type = __deep_copy_type(t->structure.members[i]->type);
                 ret->structure.members[i]->ident = strdup(t->structure.members[i]->ident);
+                ret->structure.members[i]->offset = t->structure.members[i]->offset;
             }
             break;
         }
@@ -826,7 +829,6 @@ void free_type(Type *t) {
                 free(t->structure.members[i]);
             }
 
-            free(t->structure.members);
             free(t->structure.members);
             break;
         }

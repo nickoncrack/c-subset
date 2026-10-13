@@ -38,6 +38,10 @@ enum AST_node_type {
     AST_PROGRAM
 };
 
+/*
+    Order of comparison operators in this enum
+    must remain unchanged (__gen_condition function)
+*/
 enum binop_operator {
     OP_ADD,
     OP_SUB,

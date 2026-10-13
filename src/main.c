@@ -41,19 +41,14 @@ int main(int argc, char *argv[]) {
     uint32_t tokens = tokenize(program, arr);
     printf("%d tokens parsed\n", tokens);
     printf("\n=========================\n");
-
-    // for (int i = 0; i < tokens; i++) {
-    //     printf("%s ", token_to_string(arr[i].type));
-    // }
-
-    // printf("\n=========================\n");
     
     AST_node *program = parse_program();
 
     SymbolTable table;
     analyze_AST(program, &table);
 
-    // print_AST(program);
+    print_AST(program);
+    printf("\n=========================\n");
 
     // walk 1: global declarations
     puts("section .data");
@@ -64,7 +59,7 @@ int main(int argc, char *argv[]) {
     }
 
     // walk 2: everything else
-    puts("\nsection .code");
+    printf("\nsection .code");
     for (int i = 0; i < program->as.program.count; i++) {
         AST_node *decl = program->as.program.declarations[i];
 

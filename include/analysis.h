@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ast.h>
+#include <generator.h>
 
 
 enum symbol_type {
@@ -20,10 +21,11 @@ enum scope_type {
 
 typedef struct Symbol {
     enum symbol_type type;
+    
     Declarator *decl;
+    Location *loc;
 
     uint32_t scope_depth;
-    int stack_offset;
     uint32_t frame_size;
 
     struct Symbol *next;

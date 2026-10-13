@@ -585,7 +585,7 @@ AST_node *parse_if_statement() {
     consume(); // TOKEN_IF
     expect_and_consume(TOKEN_LPAR);
 
-    AST_node *node = malloc(sizeof(AST_node));
+    AST_node *node = calloc(1, sizeof(AST_node));
     node->type = AST_IF;
     node->as.if_statement.blocks = calloc(1, sizeof(AST_node*));
     node->as.if_statement.conditions = calloc(1, sizeof(AST_node*));
@@ -725,7 +725,6 @@ AST_node *parse_for() {
     if (node->as.for_statement.init->type != AST_VAR_DECL) {
         if (!(node->as.for_statement.init->type == AST_BINARY_OP && \
             node->as.for_statement.init->as.binary_op.op != OP_ASSIGN)) {
-            
             printf("Syntax error: Expected variable declaration or reassignment\n");
 
             free(node);
