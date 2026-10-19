@@ -29,7 +29,9 @@ gcc src/* -I./include -o compiler.bin
 + ~~Type checking~~
 + Add error reporting (apparently gonna be here forever) & data freeing
 + Code emission for: ~~global and local variable declarations, binary and unary operators, return statements, function declarations, function calls, if/for/while statements, struct/array member access~~ and type casts from char to int (sign extend).
-+ Register caching
++ Switch to usage of virtual registers for the pre optimization stage
++ Switch to emission of a linear IR of instruction structs
++ Optimization & machine code emission stage
 
 ### Low priority todos 
 
