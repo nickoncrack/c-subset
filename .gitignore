@@ -1,0 +1,4 @@
+.clang*
+a.out
+out.txt
+program.c
